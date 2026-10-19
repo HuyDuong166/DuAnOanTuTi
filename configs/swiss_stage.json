@@ -1,0 +1,9 @@
+{
+  "competition_name": "UET Algorithm Battle - Swiss Stage Top 128",
+  "stage": "swiss",
+  "num_rounds": 7,
+  "advancing_count": 16,
+  "board_size": 9,
+  "max_turns": 200,
+  "obstacles": []
+}

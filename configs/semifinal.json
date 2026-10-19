@@ -1,0 +1,12 @@
+{
+    "phase_name": "Semifinals (Bán Kết)",
+    "format": "Knockout",
+    "match_format": "BO5",
+    "total_advancing": 2,
+    "next_phase": "final",
+    "board_size": 9,
+    "obstacles": [
+        [3, 3], [3, 4], [3, 5],
+        [5, 3], [5, 4], [5, 5]
+    ]
+}
