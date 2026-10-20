@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.config.settings import settings
 # ✏️ SỬA DÒNG IMPORT ROUTERS
-from backend.routers import auth, bots, matches, ranking, rooms, submissions, teams, tournaments, users, admin  # <-- THÊM 'admin'
+from backend.routers import admin, auth, bots, games, matches, ranking, rooms, submissions, teams, tournaments, users
 
 app = FastAPI(title=settings.PROJECT_NAME)
 
