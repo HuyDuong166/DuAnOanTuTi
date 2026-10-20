@@ -36,6 +36,7 @@ def get_code_from_object(obj):
     return None
 
 # 1. API Xuất mã nguồn Bot đã duyệt trong Giải đấu (Chặn tải tràn tràn 140 bot)
+# 1. API Xuất mã nguồn Bot (Khóa chặt 100% theo tournament_id)
 @router.get("/export-bots")
 async def export_bots(
     group: str = None, 
@@ -43,36 +44,42 @@ async def export_bots(
     db: Session = Depends(get_db),
     admin_user: User = Depends(verify_admin)
 ):
-    query = db.query(Bot).filter(Bot.status == "READY")
+    if not tournament_id:
+        raise HTTPException(status_code=400, detail="Thiếu tham số tournament_id!")
 
-    # Nếu có tournament_id -> chỉ lọc Bot đã đăng ký trong giải đấu đó
-    if tournament_id:
-        try:
-            from backend.models.tournament import TournamentParticipant
-            
-            participants = db.query(TournamentParticipant).filter(
-                TournamentParticipant.tournament_id == tournament_id
-            ).all()
+    registered_user_ids = []
+    registered_bot_ids = []
 
-            bot_ids = [p.bot_id for p in participants if getattr(p, "bot_id", None)]
-            user_ids = [p.user_id for p in participants if getattr(p, "user_id", None)]
+    # 1. Lấy tất cả user_id và bot_id đăng ký trong tournament này
+    try:
+        from backend.models.tournament import TournamentParticipant
+        participants = db.query(TournamentParticipant).filter(
+            TournamentParticipant.tournament_id == tournament_id
+        ).all()
 
-            if bot_ids:
-                query = query.filter(Bot.id.in_(bot_ids))
-            elif user_ids:
-                query = query.filter(Bot.user_id.in_(user_ids))
-            else:
-                # ✏️ KHẮC PHỤC: Nếu giải đấu chưa có ai tham gia -> Chặn không cho quay lại tải 140 bot
-                query = query.filter(Bot.id == -1)
-        except Exception as e:
-            print(f"[ADMIN EXPORT WARNING] Lỗi lọc TournamentParticipant: {e}")
+        for p in participants:
+            u_id = getattr(p, "user_id", None)
+            b_id = getattr(p, "bot_id", None)
+            if u_id:
+                registered_user_ids.append(u_id)
+            if b_id:
+                registered_bot_ids.append(b_id)
+    except Exception as e:
+        print(f"[EXPORTERS] Lỗi đọc TournamentParticipant: {e}")
 
-    bots = query.all()
+    # 2. Lọc chính xác các Bot thuộc danh sách đăng ký
+    bots = []
+    if registered_bot_ids:
+        bots = db.query(Bot).filter(Bot.id.in_(registered_bot_ids), Bot.status == "READY").all()
+    
+    if not bots and registered_user_ids:
+        bots = db.query(Bot).filter(Bot.user_id.in_(registered_user_ids), Bot.status == "READY").all()
 
+    # 3. NẾU KHÔNG CÓ BOT NÀO THUỘC GIẢI ĐẤU -> BÁO LỖI NGAY, KHÔNG CHO TẢI 144 BOT
     if not bots:
         raise HTTPException(
             status_code=400, 
-            detail=f"Giải đấu ID {tournament_id} chưa có thí sinh/Bot nào đăng ký tham gia được duyệt!"
+            detail=f"Giải đấu ID {tournament_id} chưa có thí sinh nào đăng ký hoặc Bot chưa ở trạng thái READY!"
         )
 
     zip_buffer = io.BytesIO()
@@ -80,14 +87,7 @@ async def export_bots(
 
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for bot in bots:
-            code_content = None
-
-            curr_ver = getattr(bot, "current_version", None)
-            code_content = get_code_from_object(curr_ver)
-
-            if not code_content:
-                code_content = get_code_from_object(bot)
-
+            code_content = get_code_from_object(getattr(bot, "current_version", None)) or get_code_from_object(bot)
             if not code_content:
                 latest_ver = db.query(BotVersion).filter(BotVersion.bot_id == bot.id).order_by(BotVersion.id.desc()).first()
                 code_content = get_code_from_object(latest_ver)
@@ -97,14 +97,11 @@ async def export_bots(
                 zip_file.writestr(filename, code_content)
                 exported_count += 1
 
-    if exported_count == 0:
-        raise HTTPException(status_code=400, detail="Tìm thấy Bot nhưng không đọc được nội dung mã nguồn")
-
     zip_buffer.seek(0)
     return StreamingResponse(
         zip_buffer,
         media_type="application/x-zip-compressed",
-        headers={"Content-Disposition": f"attachment; filename=bots_tournament_{tournament_id or 'all'}.zip"}
+        headers={"Content-Disposition": f"attachment; filename=bots_tournament_{tournament_id}.zip"}
     )
 
 class MatchResultImport(BaseModel):
