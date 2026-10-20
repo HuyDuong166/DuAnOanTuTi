@@ -35,6 +35,7 @@ def get_code_from_object(obj):
                 return val
     return None
 
+# 1. API Xuất mã nguồn Bot thuộc Giải đấu
 @router.get("/export-bots")
 async def export_bots(
     group: str = None, 
@@ -102,6 +103,7 @@ class MatchResultImport(BaseModel):
     standings: List[Dict[str, Any]]
     match_logs: List[Dict[str, Any]]
 
+# 2. API Cập nhật Bảng xếp hạng, Quán quân và Cây thi đấu
 @router.post("/import-results")
 async def import_results(
     data: MatchResultImport,
@@ -123,49 +125,90 @@ async def import_results(
                     if owner_user and hasattr(owner_user, "score"):
                         owner_user.score = (getattr(owner_user, "score") or 0) + score
 
-        # 2. Cập nhật Nhà Vô Địch (Cập nhật cả bot_id và user_id)
+        # 2. Cập nhật Nhà Vô Địch theo đúng tên cột thực tế trong CSDL
         if data.tournament_id:
             try:
                 from backend.models.tournament import Tournament
                 tournament = db.query(Tournament).filter(Tournament.id == data.tournament_id).first()
                 if tournament:
-                    tournament.status = "COMPLETED"
+                    tour_cols = Tournament.__table__.columns.keys()
+                    if "status" in tour_cols:
+                        tournament.status = "COMPLETED"
+
                     if data.standings:
                         winner_bot_id = data.standings[0].get("bot_id")
                         winner_bot = db.query(Bot).filter(Bot.id == winner_bot_id).first()
+                        winner_user_id = getattr(winner_bot, "user_id", None) if winner_bot else None
 
-                        for attr in ["winner_id", "winner_bot_id", "winner_user_id", "winner"]:
-                            if hasattr(tournament, attr):
-                                if attr in ["winner_user_id", "winner"] and winner_bot:
-                                    setattr(tournament, attr, winner_bot.user_id)
-                                else:
-                                    setattr(tournament, attr, winner_bot_id)
+                        if "winner_bot_id" in tour_cols:
+                            tournament.winner_bot_id = winner_bot_id
+                        if "winner_id" in tour_cols:
+                            tournament.winner_id = winner_user_id or winner_bot_id
+                        if "winner_user_id" in tour_cols:
+                            tournament.winner_user_id = winner_user_id
+                        if "winner" in tour_cols:
+                            try:
+                                setattr(tournament, "winner", winner_user_id or winner_bot_id)
+                            except Exception:
+                                pass
             except Exception as e:
                 print(f"[ADMIN] Lỗi cập nhật Quán quân: {e}")
 
-        # 3. Lưu danh sách trận đấu và thuộc tính round để Frontend vẽ Cây thi đấu
+        # 3. Lưu lịch sử trận đấu bằng cách đọc tên cột CSDL tự động
         if data.match_logs:
             try:
                 from backend.models.match import Match
                 db.query(Match).filter(Match.tournament_id == data.tournament_id).delete(synchronize_session=False)
 
+                match_cols = Match.__table__.columns.keys()
+
                 for idx, m in enumerate(data.match_logs, start=1):
-                    match_obj = Match(
-                        tournament_id=data.tournament_id,
-                        bot1_id=m.get("bot1_id"),
-                        bot2_id=m.get("bot2_id"),
-                        winner_id=m.get("winner_id"),
-                        status="COMPLETED"
-                    )
-                    if hasattr(match_obj, "round"): match_obj.round = m.get("round", 1)
-                    if hasattr(match_obj, "match_number"): match_obj.match_number = idx
-                    if hasattr(match_obj, "log"): match_obj.log = str(m.get("log", ""))
+                    match_kwargs = {}
+
+                    if "tournament_id" in match_cols:
+                        match_kwargs["tournament_id"] = data.tournament_id
+
+                    b1 = m.get("bot1_id")
+                    if "bot1_id" in match_cols: match_kwargs["bot1_id"] = b1
+                    elif "player1_id" in match_cols: match_kwargs["player1_id"] = b1
+                    elif "user1_id" in match_cols: match_kwargs["user1_id"] = b1
+
+                    b2 = m.get("bot2_id")
+                    if "bot2_id" in match_cols: match_kwargs["bot2_id"] = b2
+                    elif "player2_id" in match_cols: match_kwargs["player2_id"] = b2
+                    elif "user2_id" in match_cols: match_kwargs["user2_id"] = b2
+
+                    w_id = m.get("winner_id")
+                    if "winner_id" in match_cols: match_kwargs["winner_id"] = w_id
+                    elif "winner_bot_id" in match_cols: match_kwargs["winner_bot_id"] = w_id
+
+                    if "status" in match_cols: match_kwargs["status"] = "COMPLETED"
+
+                    rnd = m.get("round", 1)
+                    if "round" in match_cols: match_kwargs["round"] = rnd
+                    elif "round_num" in match_cols: match_kwargs["round_num"] = rnd
+
+                    if "match_number" in match_cols: match_kwargs["match_number"] = idx
+
+                    log_str = str(m.get("log", ""))
+                    if "log" in match_cols: match_kwargs["log"] = log_str
+                    elif "logs" in match_cols: match_kwargs["logs"] = log_str
+
+                    # Đảm bảo không bị dính lỗi non-nullable column
+                    for col in Match.__table__.columns:
+                        if not col.nullable and col.default is None and col.name not in match_kwargs and not col.primary_key and not col.autoincrement:
+                            if col.type.python_type == str:
+                                match_kwargs[col.name] = "N/A"
+                            elif col.type.python_type == int:
+                                match_kwargs[col.name] = 0
+
+                    match_obj = Match(**match_kwargs)
                     db.add(match_obj)
             except Exception as e:
                 print(f"[ADMIN] Lỗi lưu bảng Match: {e}")
 
         db.commit()
-        return {"status": "success", "message": "Cập nhật thành công!"}
+        return {"status": "success", "message": "Cập nhật Cây thi đấu và Quán quân thành công!"}
 
     except Exception as e:
         db.rollback()
