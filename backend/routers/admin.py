@@ -86,15 +86,52 @@ class MatchResultImport(BaseModel):
     match_logs: List[Dict[str, Any]]
 
 # 2. API Nhận Bảng xếp hạng & Match Logs từ Laptop đẩy lên Render
+# ✏️ CẬP NHẬT HÀM IMPORT_RESULTS TRONG backend/routers/admin.py
 @router.post("/import-results")
 async def import_results(
     data: MatchResultImport,
     db: Session = Depends(get_db),
     admin_user: User = Depends(verify_admin)
 ):
-    print(f"[ADMIN] Đã nhận kết quả Giải đấu ID {data.tournament_id}: {len(data.standings)} vị trí, {len(data.match_logs)} trận đấu.")
-    
-    return {
-        "status": "success", 
-        "message": f"Đã cập nhật thành công {len(data.standings)} kết quả vào hệ thống!"
-    }
+    try:
+        # 1. Cập nhật điểm số và thứ hạng của Bot/User vào CSDL
+        for item in data.standings:
+            bot_id = item.get("bot_id")
+            score = item.get("score", 0)
+            
+            if bot_id:
+                bot = db.query(Bot).filter(Bot.id == bot_id).first()
+                if bot:
+                    # Cập nhật điểm cho Bot (hoặc thuộc tính điểm tương ứng trong DB của bạn)
+                    if hasattr(bot, "score"):
+                        bot.score = (getattr(bot, "score") or 0) + score
+                    if hasattr(bot, "elo"):
+                        bot.elo = (getattr(bot, "elo") or 1000) + score
+
+                    # Cập nhật điểm cho chủ sở hữu Bot (User)
+                    if bot.owner and hasattr(bot.owner, "score"):
+                        bot.owner.score = (getattr(bot.owner, "score") or 0) + score
+
+        # 2. Cập nhật trạng thái Giải đấu thành Đã Hoàn Thành (COMPLETED)
+        if hasattr(data, "tournament_id") and data.tournament_id:
+            try:
+                from backend.models.tournament import Tournament
+                tournament = db.query(Tournament).filter(Tournament.id == data.tournament_id).first()
+                if tournament:
+                    tournament.status = "COMPLETED"
+            except Exception as e:
+                print(f"[ADMIN] Không tìm thấy bảng Tournament để cập nhật trạng thái: {e}")
+
+        # 3. Lưu toàn bộ thay đổi vào CSDL
+        db.commit()
+
+        print(f"[ADMIN SUCCESS] Đã lưu thành công {len(data.standings)} kết quả vào CSDL Web!")
+        return {
+            "status": "success", 
+            "message": f"Đã cập nhật trực tiếp {len(data.standings)} kết quả lên trang Web!"
+        }
+
+    except Exception as e:
+        db.rollback()
+        print(f"[ADMIN ERROR] Lỗi khi lưu kết quả vào CSDL: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Lỗi khi lưu CSDL: {str(e)}")
