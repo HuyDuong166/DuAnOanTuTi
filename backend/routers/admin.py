@@ -35,17 +35,42 @@ def get_code_from_object(obj):
                 return val
     return None
 
-# 1. API Xuất toàn bộ mã nguồn Bot
+# 1. API Xuất toàn bộ mã nguồn Bot (Đã lọc theo tournament_id)
 @router.get("/export-bots")
 async def export_bots(
     group: str = None, 
+    tournament_id: int = None,
     db: Session = Depends(get_db),
     admin_user: User = Depends(verify_admin)
 ):
-    bots = db.query(Bot).filter(Bot.status == "READY").all()
+    query = db.query(Bot).filter(Bot.status == "READY")
+
+    # Lọc danh sách Bot đã đăng ký trong Giải đấu
+    if tournament_id:
+        try:
+            from backend.models.tournament import TournamentParticipant
+            
+            participants = db.query(TournamentParticipant).filter(
+                TournamentParticipant.tournament_id == tournament_id
+            ).all()
+
+            bot_ids = [p.bot_id for p in participants if getattr(p, "bot_id", None)]
+            user_ids = [p.user_id for p in participants if getattr(p, "user_id", None)]
+
+            if bot_ids:
+                query = query.filter(Bot.id.in_(bot_ids))
+            elif user_ids:
+                query = query.filter(Bot.user_id.in_(user_ids))
+        except Exception as e:
+            print(f"[ADMIN EXPORT WARNING] Bỏ qua lọc TournamentParticipant: {e}")
+
+    bots = query.all()
 
     if not bots:
-        raise HTTPException(status_code=400, detail="Không có Bot nào ở trạng thái READY")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Không tìm thấy Bot READY nào được duyệt trong giải đấu ID {tournament_id}"
+        )
 
     zip_buffer = io.BytesIO()
     exported_count = 0
@@ -70,13 +95,13 @@ async def export_bots(
                 exported_count += 1
 
     if exported_count == 0:
-        raise HTTPException(status_code=400, detail="Đã tìm thấy Bot READY nhưng không đọc được nội dung mã nguồn")
+        raise HTTPException(status_code=400, detail="Tìm thấy Bot nhưng không đọc được nội dung mã nguồn")
 
     zip_buffer.seek(0)
     return StreamingResponse(
         zip_buffer,
         media_type="application/x-zip-compressed",
-        headers={"Content-Disposition": f"attachment; filename=bots_export_{group or 'all'}.zip"}
+        headers={"Content-Disposition": f"attachment; filename=bots_tournament_{tournament_id or 'all'}.zip"}
     )
 
 # Schema nhận dữ liệu kết quả đấu từ Laptop
@@ -85,8 +110,7 @@ class MatchResultImport(BaseModel):
     standings: List[Dict[str, Any]]
     match_logs: List[Dict[str, Any]]
 
-# 2. API Nhận Bảng xếp hạng & Match Logs từ Laptop đẩy lên Render
-# ✏️ CẬP NHẬT HÀM IMPORT_RESULTS TRONG backend/routers/admin.py
+# 2. API Nhận Bảng xếp hạng & Match Logs đẩy vào CSDL (Đã sửa lỗi truy cập user)
 @router.post("/import-results")
 async def import_results(
     data: MatchResultImport,
@@ -94,7 +118,6 @@ async def import_results(
     admin_user: User = Depends(verify_admin)
 ):
     try:
-        # 1. Cập nhật điểm số và thứ hạng của Bot/User vào CSDL
         for item in data.standings:
             bot_id = item.get("bot_id")
             score = item.get("score", 0)
@@ -102,17 +125,22 @@ async def import_results(
             if bot_id:
                 bot = db.query(Bot).filter(Bot.id == bot_id).first()
                 if bot:
-                    # Cập nhật điểm cho Bot (hoặc thuộc tính điểm tương ứng trong DB của bạn)
+                    # Cập nhật điểm cho Bot
                     if hasattr(bot, "score"):
                         bot.score = (getattr(bot, "score") or 0) + score
                     if hasattr(bot, "elo"):
                         bot.elo = (getattr(bot, "elo") or 1000) + score
 
-                    # Cập nhật điểm cho chủ sở hữu Bot (User)
-                    if bot.owner and hasattr(bot.owner, "score"):
-                        bot.owner.score = (getattr(bot.owner, "score") or 0) + score
+                    # Tìm User sở hữu Bot qua `user` hoặc `user_id`
+                    owner_user = getattr(bot, "user", None)
+                    if not owner_user and hasattr(bot, "user_id") and bot.user_id:
+                        owner_user = db.query(User).filter(User.id == bot.user_id).first()
 
-        # 2. Cập nhật trạng thái Giải đấu thành Đã Hoàn Thành (COMPLETED)
+                    # Cập nhật điểm cho User
+                    if owner_user and hasattr(owner_user, "score"):
+                        owner_user.score = (getattr(owner_user, "score") or 0) + score
+
+        # Cập nhật trạng thái Giải đấu thành COMPLETED
         if hasattr(data, "tournament_id") and data.tournament_id:
             try:
                 from backend.models.tournament import Tournament
@@ -120,11 +148,9 @@ async def import_results(
                 if tournament:
                     tournament.status = "COMPLETED"
             except Exception as e:
-                print(f"[ADMIN] Không tìm thấy bảng Tournament để cập nhật trạng thái: {e}")
+                print(f"[ADMIN] Bỏ qua cập nhật bảng Tournament: {e}")
 
-        # 3. Lưu toàn bộ thay đổi vào CSDL
         db.commit()
-
         print(f"[ADMIN SUCCESS] Đã lưu thành công {len(data.standings)} kết quả vào CSDL Web!")
         return {
             "status": "success", 
