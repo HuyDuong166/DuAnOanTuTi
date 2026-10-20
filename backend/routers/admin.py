@@ -35,7 +35,7 @@ def get_code_from_object(obj):
                 return val
     return None
 
-# 1. API Xuất toàn bộ mã nguồn Bot (Đã lọc theo tournament_id)
+# 1. API Xuất mã nguồn Bot đã duyệt trong Giải đấu (Chặn tải tràn tràn 140 bot)
 @router.get("/export-bots")
 async def export_bots(
     group: str = None, 
@@ -45,7 +45,7 @@ async def export_bots(
 ):
     query = db.query(Bot).filter(Bot.status == "READY")
 
-    # Lọc danh sách Bot đã đăng ký trong Giải đấu
+    # Nếu có tournament_id -> chỉ lọc Bot đã đăng ký trong giải đấu đó
     if tournament_id:
         try:
             from backend.models.tournament import TournamentParticipant
@@ -61,15 +61,18 @@ async def export_bots(
                 query = query.filter(Bot.id.in_(bot_ids))
             elif user_ids:
                 query = query.filter(Bot.user_id.in_(user_ids))
+            else:
+                # ✏️ KHẮC PHỤC: Nếu giải đấu chưa có ai tham gia -> Chặn không cho quay lại tải 140 bot
+                query = query.filter(Bot.id == -1)
         except Exception as e:
-            print(f"[ADMIN EXPORT WARNING] Bỏ qua lọc TournamentParticipant: {e}")
+            print(f"[ADMIN EXPORT WARNING] Lỗi lọc TournamentParticipant: {e}")
 
     bots = query.all()
 
     if not bots:
         raise HTTPException(
             status_code=400, 
-            detail=f"Không tìm thấy Bot READY nào được duyệt trong giải đấu ID {tournament_id}"
+            detail=f"Giải đấu ID {tournament_id} chưa có thí sinh/Bot nào đăng ký tham gia được duyệt!"
         )
 
     zip_buffer = io.BytesIO()
@@ -104,13 +107,12 @@ async def export_bots(
         headers={"Content-Disposition": f"attachment; filename=bots_tournament_{tournament_id or 'all'}.zip"}
     )
 
-# Schema nhận dữ liệu kết quả đấu từ Laptop
 class MatchResultImport(BaseModel):
     tournament_id: int
     standings: List[Dict[str, Any]]
     match_logs: List[Dict[str, Any]]
 
-# 2. API Nhận Bảng xếp hạng & Match Logs đẩy vào CSDL (Đã sửa lỗi truy cập user)
+# 2. API Cập nhật Bảng xếp hạng, Quán quân và Lịch sử Trận đấu vào CSDL
 @router.post("/import-results")
 async def import_results(
     data: MatchResultImport,
@@ -118,6 +120,7 @@ async def import_results(
     admin_user: User = Depends(verify_admin)
 ):
     try:
+        # 1. Cập nhật điểm số cho Bot và User
         for item in data.standings:
             bot_id = item.get("bot_id")
             score = item.get("score", 0)
@@ -125,33 +128,60 @@ async def import_results(
             if bot_id:
                 bot = db.query(Bot).filter(Bot.id == bot_id).first()
                 if bot:
-                    # Cập nhật điểm cho Bot
                     if hasattr(bot, "score"):
                         bot.score = (getattr(bot, "score") or 0) + score
                     if hasattr(bot, "elo"):
                         bot.elo = (getattr(bot, "elo") or 1000) + score
 
-                    # Tìm User sở hữu Bot qua `user` hoặc `user_id`
                     owner_user = getattr(bot, "user", None)
                     if not owner_user and hasattr(bot, "user_id") and bot.user_id:
                         owner_user = db.query(User).filter(User.id == bot.user_id).first()
 
-                    # Cập nhật điểm cho User
                     if owner_user and hasattr(owner_user, "score"):
                         owner_user.score = (getattr(owner_user, "score") or 0) + score
 
-        # Cập nhật trạng thái Giải đấu thành COMPLETED
-        if hasattr(data, "tournament_id") and data.tournament_id:
+        # 2. Cập nhật Trạng thái & Quán quân Giải đấu
+        if data.tournament_id:
             try:
                 from backend.models.tournament import Tournament
                 tournament = db.query(Tournament).filter(Tournament.id == data.tournament_id).first()
                 if tournament:
                     tournament.status = "COMPLETED"
+                    
+                    # ✏️ KHẮC PHỤC: Cập nhật người chiến thắng (Top 1 trong standings)
+                    if data.standings:
+                        winner_bot_id = data.standings[0].get("bot_id")
+                        if hasattr(tournament, "winner_id"):
+                            tournament.winner_id = winner_bot_id
+                        if hasattr(tournament, "winner_bot_id"):
+                            tournament.winner_bot_id = winner_bot_id
             except Exception as e:
-                print(f"[ADMIN] Bỏ qua cập nhật bảng Tournament: {e}")
+                print(f"[ADMIN] Lỗi cập nhật Tournament status/winner: {e}")
+
+        # 3. ✏️ KHẮC PHỤC: Lưu các trận đấu vào CSDL để Frontend vẽ Cây thi đấu
+        if data.match_logs:
+            try:
+                from backend.models.match import Match
+                for m in data.match_logs:
+                    bot1_id = m.get("bot1_id")
+                    bot2_id = m.get("bot2_id")
+                    winner_id = m.get("winner_id")
+                    
+                    match_obj = Match(
+                        tournament_id=data.tournament_id,
+                        bot1_id=bot1_id,
+                        bot2_id=bot2_id,
+                        winner_id=winner_id,
+                        status="COMPLETED"
+                    )
+                    if hasattr(match_obj, "log"):
+                        match_obj.log = str(m.get("log", ""))
+                    db.add(match_obj)
+            except Exception as e:
+                print(f"[ADMIN] Bỏ qua lưu bảng Match nếu không tồn tại: {e}")
 
         db.commit()
-        print(f"[ADMIN SUCCESS] Đã lưu thành công {len(data.standings)} kết quả vào CSDL Web!")
+        print(f"[ADMIN SUCCESS] Đã lưu thành công {len(data.standings)} kết quả và giải đấu COMPLETED!")
         return {
             "status": "success", 
             "message": f"Đã cập nhật trực tiếp {len(data.standings)} kết quả lên trang Web!"
@@ -160,4 +190,3 @@ async def import_results(
     except Exception as e:
         db.rollback()
         print(f"[ADMIN ERROR] Lỗi khi lưu kết quả vào CSDL: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Lỗi khi lưu CSDL: {str(e)}")
