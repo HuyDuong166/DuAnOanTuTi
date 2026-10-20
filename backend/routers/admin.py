@@ -1,10 +1,11 @@
 import io
 import os
 import zipfile
+from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from backend.database.connection import get_db
@@ -14,10 +15,12 @@ from backend.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Workflow"])
 
+
 def verify_admin(current_user: User = Depends(get_current_user)):
     if not getattr(current_user, "is_admin", False) and getattr(current_user, "role", "") != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền truy cập API này")
     return current_user
+
 
 def get_code_from_object(obj):
     if not obj:
@@ -35,7 +38,7 @@ def get_code_from_object(obj):
                 return val
     return None
 
-# 1. API Xuất mã nguồn Bot thuộc Giải đấu
+
 @router.get("/export-bots")
 async def export_bots(
     group: str = None, 
@@ -61,7 +64,7 @@ async def export_bots(
             if u_id: registered_user_ids.append(u_id)
             if b_id: registered_bot_ids.append(b_id)
     except Exception as e:
-        print(f"[EXPORTERS] Lỗi đọc TournamentParticipant: {e}")
+        print(f"[EXPORT ERROR] Lỗi đọc TournamentParticipant: {e}")
 
     bots = []
     if registered_bot_ids:
@@ -98,12 +101,13 @@ async def export_bots(
         headers={"Content-Disposition": f"attachment; filename=bots_tournament_{tournament_id}.zip"}
     )
 
+
 class MatchResultImport(BaseModel):
     tournament_id: int
     standings: List[Dict[str, Any]]
     match_logs: List[Dict[str, Any]]
 
-# 2. API Cập nhật Bảng xếp hạng, Quán quân và Cây thi đấu
+
 @router.post("/import-results")
 async def import_results(
     data: MatchResultImport,
@@ -111,7 +115,7 @@ async def import_results(
     admin_user: User = Depends(verify_admin)
 ):
     try:
-        # 1. Cập nhật điểm số
+        # 1. Cập nhật điểm số cho Bot & User
         for item in data.standings:
             bot_id = item.get("bot_id")
             score = item.get("score", 0)
@@ -125,42 +129,56 @@ async def import_results(
                     if owner_user and hasattr(owner_user, "score"):
                         owner_user.score = (getattr(owner_user, "score") or 0) + score
 
-        # 2. Cập nhật Nhà Vô Địch theo đúng tên cột thực tế trong CSDL
+        winner_info = "Chưa cập nhật"
+        matches_created_count = 0
+
+        # 2. Cập nhật trạng thái Giải Đấu & Nhà Vô Địch (Dynamic Mapping)
         if data.tournament_id:
-            try:
-                from backend.models.tournament import Tournament
-                tournament = db.query(Tournament).filter(Tournament.id == data.tournament_id).first()
-                if tournament:
-                    tour_cols = Tournament.__table__.columns.keys()
-                    if "status" in tour_cols:
-                        tournament.status = "COMPLETED"
+            from backend.models.tournament import Tournament
+            tournament = db.query(Tournament).filter(Tournament.id == data.tournament_id).first()
+            if tournament:
+                tour_cols = [c.key for c in inspect(Tournament).column_attrs]
+                
+                if "status" in tour_cols:
+                    tournament.status = "COMPLETED"
 
-                    if data.standings:
-                        winner_bot_id = data.standings[0].get("bot_id")
-                        winner_bot = db.query(Bot).filter(Bot.id == winner_bot_id).first()
-                        winner_user_id = getattr(winner_bot, "user_id", None) if winner_bot else None
+                if data.standings:
+                    winner_bot_id = data.standings[0].get("bot_id")
+                    winner_bot = db.query(Bot).filter(Bot.id == winner_bot_id).first()
+                    winner_user_id = getattr(winner_bot, "user_id", None) if winner_bot else None
 
-                        if "winner_bot_id" in tour_cols:
-                            tournament.winner_bot_id = winner_bot_id
-                        if "winner_id" in tour_cols:
-                            tournament.winner_id = winner_user_id or winner_bot_id
-                        if "winner_user_id" in tour_cols:
-                            tournament.winner_user_id = winner_user_id
-                        if "winner" in tour_cols:
-                            try:
-                                setattr(tournament, "winner", winner_user_id or winner_bot_id)
-                            except Exception:
-                                pass
-            except Exception as e:
-                print(f"[ADMIN] Lỗi cập nhật Quán quân: {e}")
+                    if "winner_bot_id" in tour_cols:
+                        tournament.winner_bot_id = winner_bot_id
+                    if "winner_user_id" in tour_cols:
+                        tournament.winner_user_id = winner_user_id
+                    if "winner_id" in tour_cols:
+                        tournament.winner_id = winner_user_id or winner_bot_id
+                    if "winner" in tour_cols and not isinstance(getattr(Tournament, "winner", None), property):
+                        try:
+                            setattr(tournament, "winner", winner_user_id or winner_bot_id)
+                        except Exception:
+                            pass
 
-        # 3. Lưu lịch sử trận đấu bằng cách đọc tên cột CSDL tự động
+                    winner_info = f"Bot ID {winner_bot_id} (User ID {winner_user_id})"
+
+        # 3. Lưu danh sách Trận Đấu (Match) vào CSDL (Dynamic Mapping)
         if data.match_logs:
+            Match = None
             try:
                 from backend.models.match import Match
-                db.query(Match).filter(Match.tournament_id == data.tournament_id).delete(synchronize_session=False)
+            except ImportError:
+                try:
+                    from backend.models.tournament import Match
+                except ImportError:
+                    pass
 
-                match_cols = Match.__table__.columns.keys()
+            if Match:
+                try:
+                    db.query(Match).filter(Match.tournament_id == data.tournament_id).delete(synchronize_session=False)
+                except Exception as e:
+                    print(f"[IMPORT MATCH WARNING] Xóa trận cũ: {e}")
+
+                match_cols = [c.key for c in inspect(Match).column_attrs]
 
                 for idx, m in enumerate(data.match_logs, start=1):
                     match_kwargs = {}
@@ -169,47 +187,66 @@ async def import_results(
                         match_kwargs["tournament_id"] = data.tournament_id
 
                     b1 = m.get("bot1_id")
-                    if "bot1_id" in match_cols: match_kwargs["bot1_id"] = b1
-                    elif "player1_id" in match_cols: match_kwargs["player1_id"] = b1
-                    elif "user1_id" in match_cols: match_kwargs["user1_id"] = b1
+                    for col in ["bot1_id", "player1_id", "bot_1_id", "user1_id"]:
+                        if col in match_cols:
+                            match_kwargs[col] = b1
+                            break
 
                     b2 = m.get("bot2_id")
-                    if "bot2_id" in match_cols: match_kwargs["bot2_id"] = b2
-                    elif "player2_id" in match_cols: match_kwargs["player2_id"] = b2
-                    elif "user2_id" in match_cols: match_kwargs["user2_id"] = b2
+                    for col in ["bot2_id", "player2_id", "bot_2_id", "user2_id"]:
+                        if col in match_cols:
+                            match_kwargs[col] = b2
+                            break
 
                     w_id = m.get("winner_id")
-                    if "winner_id" in match_cols: match_kwargs["winner_id"] = w_id
-                    elif "winner_bot_id" in match_cols: match_kwargs["winner_bot_id"] = w_id
+                    for col in ["winner_id", "winner_bot_id", "winner_user_id"]:
+                        if col in match_cols:
+                            match_kwargs[col] = w_id
+                            break
 
-                    if "status" in match_cols: match_kwargs["status"] = "COMPLETED"
+                    r_num = m.get("round", 1)
+                    for col in ["round", "round_num", "round_number", "stage_round"]:
+                        if col in match_cols:
+                            match_kwargs[col] = r_num
+                            break
 
-                    rnd = m.get("round", 1)
-                    if "round" in match_cols: match_kwargs["round"] = rnd
-                    elif "round_num" in match_cols: match_kwargs["round_num"] = rnd
+                    for col in ["status", "state"]:
+                        if col in match_cols:
+                            match_kwargs[col] = "COMPLETED"
+                            break
 
-                    if "match_number" in match_cols: match_kwargs["match_number"] = idx
+                    log_val = str(m.get("log", ""))
+                    for col in ["log", "logs", "detail", "details"]:
+                        if col in match_cols:
+                            match_kwargs[col] = log_val
+                            break
 
-                    log_str = str(m.get("log", ""))
-                    if "log" in match_cols: match_kwargs["log"] = log_str
-                    elif "logs" in match_cols: match_kwargs["logs"] = log_str
+                    for col in ["match_number", "order", "number"]:
+                        if col in match_cols:
+                            match_kwargs[col] = idx
+                            break
 
-                    # Đảm bảo không bị dính lỗi non-nullable column
-                    for col in Match.__table__.columns:
-                        if not col.nullable and col.default is None and col.name not in match_kwargs and not col.primary_key and not col.autoincrement:
-                            if col.type.python_type == str:
-                                match_kwargs[col.name] = "N/A"
-                            elif col.type.python_type == int:
-                                match_kwargs[col.name] = 0
+                    # Điền giá trị mặc định tránh lỗi NOT NULL
+                    for column in Match.__table__.columns:
+                        if not column.nullable and column.default is None and not column.primary_key and not column.autoincrement and column.name not in match_kwargs:
+                            if column.type.python_type == str:
+                                match_kwargs[column.name] = "COMPLETED"
+                            elif column.type.python_type == int:
+                                match_kwargs[column.name] = 0
 
                     match_obj = Match(**match_kwargs)
                     db.add(match_obj)
-            except Exception as e:
-                print(f"[ADMIN] Lỗi lưu bảng Match: {e}")
+                    matches_created_count += 1
 
         db.commit()
-        return {"status": "success", "message": "Cập nhật Cây thi đấu và Quán quân thành công!"}
+        return {
+            "status": "success",
+            "message": f"Đã lưu thành công {matches_created_count} trận đấu và cập nhật Quán quân!",
+            "winner": winner_info,
+            "matches_created": matches_created_count
+        }
 
     except Exception as e:
         db.rollback()
+        print(f"[IMPORT ERROR] Lỗi khi lưu CSDL: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Lỗi khi lưu CSDL: {str(e)}")
