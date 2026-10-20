@@ -35,7 +35,6 @@ def get_code_from_object(obj):
                 return val
     return None
 
-# 1. API Xuất mã nguồn Bot thuộc Giải đấu
 @router.get("/export-bots")
 async def export_bots(
     group: str = None, 
@@ -58,10 +57,8 @@ async def export_bots(
         for p in participants:
             u_id = getattr(p, "user_id", None)
             b_id = getattr(p, "bot_id", None)
-            if u_id:
-                registered_user_ids.append(u_id)
-            if b_id:
-                registered_bot_ids.append(b_id)
+            if u_id: registered_user_ids.append(u_id)
+            if b_id: registered_bot_ids.append(b_id)
     except Exception as e:
         print(f"[EXPORTERS] Lỗi đọc TournamentParticipant: {e}")
 
@@ -105,7 +102,6 @@ class MatchResultImport(BaseModel):
     standings: List[Dict[str, Any]]
     match_logs: List[Dict[str, Any]]
 
-# 2. API Cập nhật Bảng xếp hạng, Quán quân và Cây thi đấu
 @router.post("/import-results")
 async def import_results(
     data: MatchResultImport,
@@ -113,34 +109,27 @@ async def import_results(
     admin_user: User = Depends(verify_admin)
 ):
     try:
-        # 1. Cập nhật điểm số cho Bot và User
+        # 1. Cập nhật điểm số
         for item in data.standings:
             bot_id = item.get("bot_id")
             score = item.get("score", 0)
-            
             if bot_id:
                 bot = db.query(Bot).filter(Bot.id == bot_id).first()
                 if bot:
-                    if hasattr(bot, "score"):
-                        bot.score = (getattr(bot, "score") or 0) + score
-                    if hasattr(bot, "elo"):
-                        bot.elo = (getattr(bot, "elo") or 1000) + score
+                    if hasattr(bot, "score"): bot.score = (getattr(bot, "score") or 0) + score
+                    if hasattr(bot, "elo"): bot.elo = (getattr(bot, "elo") or 1000) + score
 
-                    owner_user = getattr(bot, "user", None)
-                    if not owner_user and hasattr(bot, "user_id") and bot.user_id:
-                        owner_user = db.query(User).filter(User.id == bot.user_id).first()
-
+                    owner_user = getattr(bot, "user", None) or (db.query(User).filter(User.id == bot.user_id).first() if hasattr(bot, "user_id") else None)
                     if owner_user and hasattr(owner_user, "score"):
                         owner_user.score = (getattr(owner_user, "score") or 0) + score
 
-        # 2. 🔑 SỬA LỖI NHÀ VÔ ĐỊCH: Cập nhật đồng thời winner_id và winner (User)
+        # 2. Cập nhật Nhà Vô Địch (Cập nhật cả bot_id và user_id)
         if data.tournament_id:
             try:
                 from backend.models.tournament import Tournament
                 tournament = db.query(Tournament).filter(Tournament.id == data.tournament_id).first()
                 if tournament:
                     tournament.status = "COMPLETED"
-                    
                     if data.standings:
                         winner_bot_id = data.standings[0].get("bot_id")
                         winner_bot = db.query(Bot).filter(Bot.id == winner_bot_id).first()
@@ -152,9 +141,9 @@ async def import_results(
                                 else:
                                     setattr(tournament, attr, winner_bot_id)
             except Exception as e:
-                print(f"[ADMIN] Lỗi cập nhật Tournament status/winner: {e}")
+                print(f"[ADMIN] Lỗi cập nhật Quán quân: {e}")
 
-        # 3. 🔑 SỬA LỖI CÂY THI ĐẤU: Xóa trận cũ và gán đầy đủ thuộc tính round
+        # 3. Lưu danh sách trận đấu và thuộc tính round để Frontend vẽ Cây thi đấu
         if data.match_logs:
             try:
                 from backend.models.match import Match
@@ -168,24 +157,16 @@ async def import_results(
                         winner_id=m.get("winner_id"),
                         status="COMPLETED"
                     )
-                    if hasattr(match_obj, "round"):
-                        match_obj.round = m.get("round", 1)
-                    if hasattr(match_obj, "match_number"):
-                        match_obj.match_number = idx
-                    if hasattr(match_obj, "log"):
-                        match_obj.log = str(m.get("log", ""))
+                    if hasattr(match_obj, "round"): match_obj.round = m.get("round", 1)
+                    if hasattr(match_obj, "match_number"): match_obj.match_number = idx
+                    if hasattr(match_obj, "log"): match_obj.log = str(m.get("log", ""))
                     db.add(match_obj)
             except Exception as e:
                 print(f"[ADMIN] Lỗi lưu bảng Match: {e}")
 
         db.commit()
-        print(f"[ADMIN SUCCESS] Đã lưu thành công {len(data.standings)} kết quả!")
-        return {
-            "status": "success", 
-            "message": f"Đã cập nhật trực tiếp {len(data.standings)} kết quả lên trang Web!"
-        }
+        return {"status": "success", "message": "Cập nhật thành công!"}
 
     except Exception as e:
         db.rollback()
-        print(f"[ADMIN ERROR] Lỗi khi lưu kết quả vào CSDL: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Lỗi khi lưu CSDL: {str(e)}")
