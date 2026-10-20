@@ -1,1 +1,0 @@
-c:\Users\nganlp\.gemini\antigravity\scratch\UET-Algorithm-Battle\bots\submissions\user_6\bot_5_v1.py

@@ -1,0 +1,162 @@
+[
+  {
+    "bot_id": 1,
+    "name": "Bot_SinhVien_1",
+    "script_path": "bots/examples/greedy_bot.py"
+  },
+  {
+    "bot_id": 2,
+    "name": "Bot_SinhVien_2",
+    "script_path": "bots/examples/aggressive_bot.py"
+  },
+  {
+    "bot_id": 3,
+    "name": "Bot_SinhVien_3",
+    "script_path": "bots/examples/tactical_bot.py"
+  },
+  {
+    "bot_id": 4,
+    "name": "Bot_SinhVien_4",
+    "script_path": "bots/examples/random_bot.py"
+  },
+  {
+    "bot_id": 5,
+    "name": "Bot_SinhVien_5",
+    "script_path": "bots/examples/greedy_bot.py"
+  },
+  {
+    "bot_id": 6,
+    "name": "Bot_SinhVien_6",
+    "script_path": "bots/examples/aggressive_bot.py"
+  },
+  {
+    "bot_id": 7,
+    "name": "Bot_SinhVien_7",
+    "script_path": "bots/examples/tactical_bot.py"
+  },
+  {
+    "bot_id": 8,
+    "name": "Bot_SinhVien_8",
+    "script_path": "bots/examples/random_bot.py"
+  },
+  {
+    "bot_id": 9,
+    "name": "Bot_SinhVien_9",
+    "script_path": "bots/examples/greedy_bot.py"
+  },
+  {
+    "bot_id": 10,
+    "name": "Bot_SinhVien_10",
+    "script_path": "bots/examples/aggressive_bot.py"
+  },
+  {
+    "bot_id": 11,
+    "name": "Bot_SinhVien_11",
+    "script_path": "bots/examples/tactical_bot.py"
+  },
+  {
+    "bot_id": 12,
+    "name": "Bot_SinhVien_12",
+    "script_path": "bots/examples/random_bot.py"
+  },
+  {
+    "bot_id": 13,
+    "name": "Bot_SinhVien_13",
+    "script_path": "bots/examples/greedy_bot.py"
+  },
+  {
+    "bot_id": 14,
+    "name": "Bot_SinhVien_14",
+    "script_path": "bots/examples/aggressive_bot.py"
+  },
+  {
+    "bot_id": 15,
+    "name": "Bot_SinhVien_15",
+    "script_path": "bots/examples/tactical_bot.py"
+  },
+  {
+    "bot_id": 16,
+    "name": "Bot_SinhVien_16",
+    "script_path": "bots/examples/random_bot.py"
+  },
+  {
+    "bot_id": 17,
+    "name": "Bot_SinhVien_17",
+    "script_path": "bots/examples/greedy_bot.py"
+  },
+  {
+    "bot_id": 18,
+    "name": "Bot_SinhVien_18",
+    "script_path": "bots/examples/aggressive_bot.py"
+  },
+  {
+    "bot_id": 19,
+    "name": "Bot_SinhVien_19",
+    "script_path": "bots/examples/tactical_bot.py"
+  },
+  {
+    "bot_id": 20,
+    "name": "Bot_SinhVien_20",
+    "script_path": "bots/examples/random_bot.py"
+  },
+  {
+    "bot_id": 21,
+    "name": "Bot_SinhVien_21",
+    "script_path": "bots/examples/greedy_bot.py"
+  },
+  {
+    "bot_id": 22,
+    "name": "Bot_SinhVien_22",
+    "script_path": "bots/examples/aggressive_bot.py"
+  },
+  {
+    "bot_id": 23,
+    "name": "Bot_SinhVien_23",
+    "script_path": "bots/examples/tactical_bot.py"
+  },
+  {
+    "bot_id": 24,
+    "name": "Bot_SinhVien_24",
+    "script_path": "bots/examples/random_bot.py"
+  },
+  {
+    "bot_id": 25,
+    "name": "Bot_SinhVien_25",
+    "script_path": "bots/examples/greedy_bot.py"
+  },
+  {
+    "bot_id": 26,
+    "name": "Bot_SinhVien_26",
+    "script_path": "bots/examples/aggressive_bot.py"
+  },
+  {
+    "bot_id": 27,
+    "name": "Bot_SinhVien_27",
+    "script_path": "bots/examples/tactical_bot.py"
+  },
+  {
+    "bot_id": 28,
+    "name": "Bot_SinhVien_28",
+    "script_path": "bots/examples/random_bot.py"
+  },
+  {
+    "bot_id": 29,
+    "name": "Bot_SinhVien_29",
+    "script_path": "bots/examples/greedy_bot.py"
+  },
+  {
+    "bot_id": 30,
+    "name": "Bot_SinhVien_30",
+    "script_path": "bots/examples/aggressive_bot.py"
+  },
+  {
+    "bot_id": 31,
+    "name": "Bot_SinhVien_31",
+    "script_path": "bots/examples/tactical_bot.py"
+  },
+  {
+    "bot_id": 32,
+    "name": "Bot_SinhVien_32",
+    "script_path": "bots/examples/random_bot.py"
+  }
+]
