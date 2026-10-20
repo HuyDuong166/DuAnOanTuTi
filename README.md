@@ -1,217 +1,393 @@
-# ⚔️ UET Algorithm Battle — Đấu Trường Thuật Toán AI
+# UET Algorithm Battle Platform ⚔️🤖
 
-**UET Algorithm Battle** là nền tảng tổ chức thi đấu thuật toán trí tuệ nhân tạo (Bot vs Bot) dựa trên bộ môn cờ chiến thuật **Kéo - Búa - Bao (Rock - Paper - Scissors) trên bàn cờ 9x9**. Hệ thống cung cấp môi trường lập trình, kiểm duyệt bảo mật mã nguồn tự động (Static AST & Docker Sandbox), phòng thi đấu trực tuyến 1v1, bảng xếp hạng toàn server và hệ thống tổ chức giải đấu **Knockout (Loại trực tiếp)** hoàn chỉnh.
+**UET Algorithm Battle Platform** (Dự án BT03) là hệ thống chấm điểm và tự động tổ chức giải đấu đối kháng dành cho các thuật toán AI/Bot. Hệ thống cho phép sinh viên/lập trình viên lập trình Bot, nộp mã nguồn, thi đấu đối kháng trực tiếp trong môi trường cách ly an toàn (Docker Sandbox), theo dõi trực tiếp kết quả và xem lại diễn biến trận đấu qua giao diện Web trực quan.
 
-> 🌐 **Link truy cập trực tuyến (Khác mạng / Internet qua Cloudflare Tunnel)**:  
-> 👉 **[https://blah-biology-fcc-ceo.trycloudflare.com/index.html](https://blah-biology-fcc-ceo.trycloudflare.com/index.html)**
-
----
-
-## 🌟 Tính Năng Nổi Bật
-
-### 1. ♟️ Game Engine Cờ Kéo - Búa - Bao 9x9
-- **Bàn cờ 9x9**: Hai phe **Đỏ (RED)** và **Xanh (BLUE)** xuất phát đối xứng ở hai đầu chiến tuyến, mỗi bên gồm 9 quân cờ (3 Kéo ✂️, 3 Búa 🪨, 3 Bao 📄) bảo vệ căn cứ chính (`Base`).
-- **Di chuyển 8 hướng**: Mỗi lượt, quân cờ di chuyển 1 ô theo 8 hướng (ngang, dọc, chéo).
-- **Cơ chế giao tranh**: Khắc chế trực tiếp theo quy tắc **Búa thắng Kéo**, **Kéo thắng Bao**, **Bao thắng Búa**. Hai quân cùng loại giao chiến sẽ **cùng bị tiêu diệt** (Mutual Destruction).
-- **Điều kiện phân định Thắng / Thua**:
-  1. **Chiếm căn cứ địch**: Đưa bất kỳ quân cờ nào của mình vào ô căn cứ đối phương (`(0, 4)` hoặc `(8, 4)`).
-  2. **Tiêu diệt toàn bộ quân cờ**: Đối phương bị tiêu diệt sạch **tất cả các quân cờ** trên bàn cờ.
-  3. **Hết 200 lượt đi (Tie-breaker)**: Xét tổng số quân còn sống trên bàn cờ; nếu bằng nhau (hoặc trong giải đấu Knockout cần phân thắng bại), hệ thống xét tiếp khoảng cách Manhattan gần nhất tới căn cứ địch để quyết định người chiến thắng.
-
-### 2. 🤖 Quản Lý Bot Python & Kiểm Duyệt Sandbox
-- Người chơi nộp mã nguồn Bot (`.py`) trực tiếp trên giao diện web.
-- **Tự động kiểm duyệt 2 lớp**:
-  - **Lớp 1 (AST Static Validator)**: Phân tích cây cú pháp Python, đảm bảo tồn tại `class Bot` và phương thức `get_move()`, đồng thời chặn các thư viện bị cấm (`os`, `sys`, `subprocess`, `socket`, `shutil`, `http`,...).
-  - **Lớp 2 (Sandbox Execution)**: Chạy thử nghiệm với trạng thái bàn cờ giả lập trong môi trường cô lập (Docker Sandbox hoặc Subprocess giới hạn thời gian 2.0s/nước đi) trước khi cấp trạng thái **`READY`**.
-- Hỗ trợ lưu trữ lịch sử phiên bản (`BotVersion`) giúp người chơi dễ dàng nâng cấp thuật toán.
-
-### 3. ⚔️ Chế Độ Thi Đấu Thường (PvP 1v1 Rooms)
-- Tạo phòng đấu riêng hoặc tham gia phòng đang mở qua danh sách sảnh / mã phòng.
-- Cơ chế duyệt người chơi vào phòng, chọn Bot `READY`, nhấn **Sẵn sàng** và bắt đầu trận đấu.
-- Điểm số cộng trực tiếp vào **Bảng Xếp Hạng Toàn Server**:
-  - **Thắng**: `+3 điểm` | **Hòa**: `+1 điểm` | **Thua**: `+0 điểm`.
-
-### 4. 🏆 Hệ Thống Giải Đấu Knockout (Loại Trực Tiếp)
-- **Tổ chức & Duyệt đăng ký**:
-  - Người tổ chức tạo giải đấu (cấu hình số lượng tối thiểu $\ge 4$ và tối đa).
-  - Người chơi gửi yêu cầu đăng ký kèm theo Bot có trạng thái `READY`.
-  - Người tổ chức xét duyệt (`ACCEPTED` / `REJECTED`) với cơ chế khóa dữ liệu chống vượt quá giới hạn.
-- **Thuật toán chia nhánh tổng quát ($N \ge 4$)**:
-  - Hỗ trợ mọi số lượng người chơi hợp lệ (kể cả số lẻ hoặc không phải lũy thừa của 2 như 5, 6, 7, 9, 12...).
-  - Tự động tính khung nhánh $2^k$ gần nhất và phân bổ ngẫu nhiên các suất miễn đấu (**`BYE`**) ở vòng đầu tiên để người chơi đặc cách tiến thẳng vào vòng trong.
-- **Điểm danh 10 phút & Xử thua vắng mặt (`FORFEIT`)**:
-  - Khi trận đấu mở (`READY`), hai tuyển thủ có **10 phút** để nhấn **"Tham gia trận đấu"**.
-  - Khi cả 2 cùng tham gia, hệ thống tự động kích hoạt trận đấu. Nếu quá hạn 10 phút, người vắng mặt sẽ bị xử thua `FORFEIT`.
-- **Bàn cờ trực quan (Interactive Battle Arena)**:
-  - Khi trận đấu diễn ra, giao diện hiển thị bàn cờ 9x9 trực quan tái hiện từng nước đi của hai Bot (hỗ trợ tua bước, dừng/chạy, chỉnh tốc độ `0.5x` – `4x`).
-  - **Bảo mật kịch tính**: Kết quả và danh tính người chiến thắng được ẩn hoàn toàn trong suốt quá trình quân cờ di chuyển và **chỉ công bố chính thức khi nước đi cuối cùng kết thúc**.
-
-### 5. 🌐 Hỗ Trợ Đa Tab (Multi-Account) & Mạng LAN/Wi-Fi
-- Sử dụng `sessionStorage` cho phép mở **nhiều tab trình duyệt với các tài khoản khác nhau trên cùng một máy tính** để tự kiểm thử và thi đấu.
-- Tự động đồng bộ địa chỉ API theo IP mạng nội bộ (LAN/Wi-Fi), giúp nhiều máy tính khác nhau truy cập và thi đấu cùng lúc.
+🌐 **Demo trực tuyến (Live App)**: <https://duanoantuti.onrender.com>
 
 ---
 
-## 📁 Cấu Trúc Thư Mục Dự Án
+## 📜 1. Luật chơi Chi tiết (Game Rules & Mechanics)
 
-```text
-UET-Algorithm-Battle/
-├── backend/                  # Backend FastAPI Server
-│   ├── api/                  # Các RESTful API Endpoints (auth, bots, rooms, tournaments, matches, ranking...)
-│   ├── config/               # Cấu hình hệ thống & biến môi trường (settings.py)
-│   ├── database/             # Kết nối SQLAlchemy (MySQL & tự động fallback SQLite)
-│   ├── models/               # Các bảng Database ORM (User, Bot, Room, Tournament, Match, PlayerStat...)
-│   ├── schemas/              # Pydantic Schemas kiểm tra dữ liệu đầu vào/đầu ra
-│   ├── services/             # Nghiệp vụ cốt lõi (Tournament Knockout, Room PvP, Bot Validator, Match Service)
-│   └── main.py               # Điểm khởi chạy ứng dụng FastAPI
-├── bots/                     # Hệ thống Bot AI
-│   ├── bot_api.py            # API hỗ trợ lập trình viên viết Bot
-│   ├── example_bot.py        # Bot mẫu chiến thuật cơ bản
-│   ├── greedy_bot.py         # Bot mẫu chiến thuật tham lam (Greedy)
-│   ├── random_bot.py         # Bot mẫu đi ngẫu nhiên
-│   └── submissions/          # Thư mục lưu trữ mã nguồn Bot của người chơi nộp lên
-├── configs/                  # Cấu hình JSON cho luật thi đấu và các vòng giải đấu
-├── database/                 # File khởi tạo cấu trúc bảng SQL gốc (schema.sql)
-├── docs/                     # Tài liệu thiết kế kiến trúc, luật chơi và hướng dẫn API Bot
-├── frontend/                 # Giao diện người dùng (HTML5, CSS3, Vanilla JS)
-│   ├── css/                  # Giao diện chuẩn hóa (style.css)
-│   ├── js/                   # Logic điều hướng, xác thực đa tab và kết nối API
+### 1.1. Bàn cờ & Quân cờ
+* **Bàn cờ**: Bàn cờ dạng ma trận $M \times M$ (mặc định $9 \times 9$).
+* **Quản lý quân cờ (`piece.py`)**:
+  * Mỗi quân cờ thuộc về một người chơi cụ thể (Player 1 hoặc Player 2) và mang thuộc tính loại quân (Kéo, Búa, Bao hoặc các loại quân chiến thuật).
+  * Quy tắc tương tác quân cờ dựa trên mối quan hệ khắc chế:
+    $$\text{Búa} \succ \text{Kéo} \succ \text{Bao} \succ \text{Búa}$$
+  * Khi quân cờ di chuyển vào ô có quân đối phương:
+    * Nếu quân của bạn khắc quân đối phương $\rightarrow$ Quân đối phương bị tiêu diệt và quân bạn chiếm giữ ô đó.
+    * Nếu quân bạn bị đối phương khắc $\rightarrow$ Quân bạn bị tiêu diệt.
+    * Nếu cùng loại quân $\rightarrow$ Xảy ra hòa tại ô (cả hai quân bị loại bỏ hoặc theo quy định của bộ luật `rule_set.py`).
+
+### 1.2. Nước đi hợp lệ (`move.py`)
+* Mỗi lượt, một người chơi được thực hiện duy nhất **1 nước đi hợp lệ**.
+* Nước đi hợp lệ gồm vị trí xuất phát $(x_1, y_1)$ và vị trí đích $(x_2, y_2)$ thỏa mãn:
+  1. Có quân cờ của người chơi ở ô xuất phát $(x_1, y_1)$.
+  2. Vị trí đích nằm trong khoảng giới hạn bàn cờ.
+  3. Quãng đường di chuyển tuân thủ khoảng cách cho phép (thường là 1 ô lân cận theo chiều ngang, dọc hoặc chéo).
+  4. Không di chuyển vào ô đang chứa quân đồng minh.
+
+### 1.3. Điều kiện Thắng / Thua / Hòa (`game_result.py`)
+Một trận đấu kết thúc và phân định kết quả trong các trường hợp:
+1. **Thắng tuyệt đối (Checkmate / Total Elimination)**: Một người chơi tiêu diệt toàn bộ quân cờ của đối phương hoặc ăn được quân Chỉ huy (King/Leader) của đối thủ.
+2. **Hết số lượt tối đa (Max Turns Reached)**: Nếu trận đấu vượt quá số lượt quy định (vd: 100 lượt) mà chưa phân thắng bại, điểm số sẽ tính dựa trên:
+   * Tổng số quân còn lại trên bàn cờ.
+   * Tổng điểm giá trị quân cờ còn sống.
+3. **Thắng do Đối thủ Vi phạm (Disqualification)**: Đối thủ bị xử thua ngay lập tức nếu vi phạm một trong các lỗi kỹ thuật (xem mục 1.4).
+
+### 1.4. Xử phạt & Lỗi kỹ thuật (Penalties & Disqualifications)
+* **Timeout (Quá thời gian)**: Mỗi nước đi có giới hạn thời gian phản hồi $t_{\text{step}} \le 1.0\text{s}$ và tổng thời gian quỹ $T_{\text{total}} \le 30.0\text{s}$. Nếu Bot vượt quá giới hạn này, hệ thống chấm thua (Forfeit) ngay lập tức.
+* **Invalid Move (Nước đi không hợp lệ)**: Trả về tọa độ ngoài bàn cờ, di chuyển quân của đối thủ hoặc nước đi bị cấm bởi `rule_set.py`.
+* **Runtime Error / Crash**: Bot bị ngoại lệ (Exception), tràn bộ nhớ hoặc dừng đột ngột trong quá trình tính toán.
+
+---
+
+## 🤖 2. Hướng dẫn Viết Bot (Bot Development Guide)
+
+### 2.1. Nguyên lý Hoạt động của Bot
+Bot tương tác với hệ thống thông qua giao diện Standard Input/Output (STDIN/STDOUT) hoặc qua bộ Wrapper SDK `bots/api/base_bot.py`. Hệ thống sẽ truyền trạng thái bàn cờ hiện tại `GameState`, Bot xử lý và xuất ra nước đi `Move` tương ứng.
+
+### 2.2. Cấu trúc Dữ liệu Cốt lõi
+
+#### A. Trạng thái Trận đấu (`GameState`)
+```python
+class GameState:
+    board: Board                # Ma trận bàn cờ hiện tại
+    current_player: int         # ID người chơi đến lượt (1 hoặc 2)
+    turn_count: int             # Số thứ tự lượt hiện tại
+    history: List[Move]         # Lịch sử các nước đi trước đó
+    
+    def get_valid_moves(self, player_id: int) -> List[Move]:
+        """Trả về danh sách tất cả các nước đi hợp lệ của player_id"""
+        pass
+```
+
+#### B. Nước đi (`Move`)
+```python
+class Move:
+    from_pos: Tuple[int, int]   # Tọa độ xuất phát (row, col)
+    to_pos: Tuple[int, int]     # Tọa độ đích (row, col)
+```
+
+### 2.3. Mã Nguồn Mẫu Viết Bot (Bot SDK Example)
+
+Dưới đây là ví dụ triển khai một Bot chiến thuật hoàn chỉnh sử dụng lớp `BaseBot`:
+
+```python
+import sys
+import random
+from typing import List, Optional
+from bots.api.base_bot import BaseBot
+from game.move import Move
+from game.game_state import GameState
+
+class TacticalSmartBot(BaseBot):
+    def __init__(self):
+        super().__init__(name="TacticalSmartBot")
+
+    def make_move(self, game_state: GameState) -> Optional[Move]:
+        """
+        Hàm chính được hệ thống gọi ở mỗi lượt chơi.
+        """
+        # 1. Lấy danh sách nước đi hợp lệ
+        valid_moves: List[Move] = game_state.get_valid_moves(self.player_id)
+        
+        if not valid_moves:
+            return None
+
+        # 2. Đánh giá và chọn nước đi tối ưu nhất
+        best_move = None
+        best_score = -float('inf')
+
+        for move in valid_moves:
+            score = self.evaluate_move(move, game_state)
+            if score > best_score:
+                best_score = score
+                best_move = move
+
+        # 3. Trả về nước đi được chọn
+        return best_move if best_move else random.choice(valid_moves)
+
+    def evaluate_move(self, move: Move, game_state: GameState) -> float:
+        """
+        Hàm đánh giá điểm số cho một nước đi cụ thể.
+        """
+        score = 0.0
+        target_piece = game_state.board.get_piece(move.to_pos)
+        my_piece = game_state.board.get_piece(move.from_pos)
+
+        # Ưu tiên 1: Ăn quân đối phương
+        if target_piece is not None and target_piece.player_id != self.player_id:
+            # Nếu quân mình khắc quân địch -> Điểm cộng lớn
+            if my_piece.beats(target_piece):
+                score += 50.0
+            # Nếu bằng cờ -> Điểm cộng vừa
+            elif my_piece.type == target_piece.type:
+                score += 10.0
+            else:
+                score -= 30.0 # Bị ăn ngược
+
+        # Ưu tiên 2: Di chuyển về phía trung tâm bàn cờ
+        center_row, center_col = 3.5, 3.5
+        dist_to_center = abs(move.to_pos[0] - center_row) + abs(move.to_pos[1] - center_col)
+        score += (8 - dist_to_center) * 2.0
+
+        return score
+
+if __name__ == "__main__":
+    # Khởi chạy Bot
+    bot = TacticalSmartBot()
+    bot.run()
+```
+
+### 2.4. Quy tắc & Lời khuyên cho Lập trình viên
+1. **Không sử dụng thư viện cấm**: Tránh dùng các thư viện can thiệp hệ thống (`os.system`, `subprocess`, `socket`) gây lỗi bảo mật trong Sandbox.
+2. **Tối ưu hóa thuật toán**: Đảm bảo thời gian tính toán của thuật toán (Minimax, Alpha-Beta Pruning, Heuristic) $\le 0.5\text{s}$ cho mỗi nước đi để tránh phạt Timeout.
+3. **Xử lý Ngoại lệ (Exception Handling)**: Bọc logic chính trong khối `try-except` để Bot không bị crash bất ngờ.
+
+---
+
+## 🏆 3. Chi tiết các Thể thức Thi đấu (Tournament Formats)
+
+Hệ thống cung cấp linh hoạt nhiều thể thức giải đấu tự động (`tournament/`):
+
+```
+                        ┌──────────────────────────────┐
+                        │  Vòng Sơ Loại (Qualification) │
+                        └──────────────┬───────────────┘
+                                       │ (Top Bots)
+                                       ▼
+                        ┌──────────────────────────────┐
+                        │  Vòng Hệ Thụy Sĩ (Swiss) /   │
+                        │  Vòng Tròn (Round-Robin)     │
+                        └──────────────┬───────────────┘
+                                       │ (Top 16 / Top 8)
+                                       ▼
+                        ┌──────────────────────────────┐
+                        │ Vòng Loại Trực Tiếp Knockout │
+                        │ (Top 16 -> Tứ kết -> Chung kết)│
+                        └──────────────────────────────┘
+```
+
+### 3.1. Vòng Sơ loại (Qualification Stage)
+* **Mục đích**: Kiểm tra tính ổn định của Bot, lọc bỏ các Bot bị lỗi cú pháp, crash liên tục hoặc ngắt kết nối.
+* **Thể thức**: Mỗi Bot đấu kiểm thử từ 2 - 3 trận với các Bot mẫu (`random_bot`, `greedy_bot`). Bot vượt qua số điểm tối thiểu sẽ bước vào giải đấu chính thức.
+
+### 3.2. Vòng thi đấu Hệ Thụy Sĩ (Swiss System Stage - `swiss.py`)
+* **Đặc điểm**: Số lượng vòng đấu cố định (thường từ 5 đến 7 vòng) mà không loại Bot nào sớm.
+* **Quy tắc xếp cặp**:
+  * Ở vòng 1, ghép cặp ngẫu nhiên hoặc theo hạt giống.
+  * Từ vòng 2 trở đi, các Bot có cùng (hoặc xấp xỉ) điểm số tổng sẽ được xếp cặp thi đấu với nhau.
+  * Hai Bot **không bao giờ gặp nhau quá 1 lần** trong suốt giai đoạn Swiss.
+* **Ưu điểm**: Phản ánh chính xác thực lực của từng Bot mà không phụ thuộc vào may mắn bốc thăm.
+
+### 3.3. Vòng Tròn Tính Điểm (Round-Robin Stage - `round_robin.py`)
+* **Quy tắc**: Mỗi Bot thi đấu với tất cả các Bot còn lại trong bảng đấu (1 hoặc 2 lượt đấu đi/về).
+* **Cách tính điểm**:
+  * **Thắng**: $+3$ điểm.
+  * **Hòa**: $+1$ điểm.
+  * **Thua**: $0$ điểm.
+
+### 3.4. Vòng Loại Trực Tiếp (Knockout Stage - `knockout.py`)
+* **Áp dụng**: Dành cho Top 16, Top 8 hoặc Top 4 xuất sắc nhất từ vòng Swiss/Vòng bảng.
+* **Cấu trúc**: Sơ đồ nhánh thi đấu (Bracket) theo tiêu chuẩn:
+  * **Vòng 1/16** $\rightarrow$ **Tứ kết (Quarterfinal)** $\rightarrow$ **Bán kết (Semifinal)** $\rightarrow$ **Chung kết (Final)**.
+* **Phân hạt giống (Seeding)**: Bot đứng đầu vòng Swiss/Vòng bảng sẽ gặp Bot đứng thứ hạng thấp nhất (vd: Hạt giống #1 gặp Hạt giống #16).
+
+### 3.5. Tiêu chí Phân định Thứ hạng & Tie-breakers
+Khi hai hoặc nhiều Bot có cùng tổng số điểm, thứ hạng được ưu tiên phân định theo thứ tự:
+1. **Chỉ số Buchholz / Sonneborn-Berger**: Tổng điểm của tất cả các đối thủ mà Bot đó đã thi đấu cùng.
+2. **Trận đối đầu trực tiếp (Head-to-Head)**: Kết quả trận đấu giữa 2 Bot bằng điểm.
+3. **Hiệu số thắng/thua (Win/Loss Ratio)**.
+4. **Tổng thời gian tính toán**: Bot nào có tổng thời gian suy nghĩ ít hơn sẽ xếp trên.
+
+---
+
+## ⚙️ 4. Kiến trúc & Hệ thống Thi đấu (System Architecture)
+
+### 4.1. Sơ đồ Tổng quan Môi trường Vận hành
+
+```
+ [Frontend Web] <---> [FastAPI Backend] <---> [SQLite Database]
+                             │
+                             ▼
+                    [Tournament Manager]
+                             │
+                             ▼
+                    [Match Scheduler]
+                             │
+                             ▼
+                    [Match Worker Process]
+                             │
+            ┌────────────────┴────────────────┐
+            ▼                                 ▼
+   [Docker Sandbox - Bot 1]  <--->  [Docker Sandbox - Bot 2]
+            │                                 │
+            └───────────────┬─────────────────┘
+                            ▼
+                    [Match Runner / Judge]
+                            │
+                            ▼
+                    [Match Logs (JSON)]
+```
+
+### 4.2. Các Thành phần Hệ thống chính
+
+1. **Game Engine (`game/`)**: Lõi tính toán trạng thái, kiểm tra nước đi hợp lệ, thực thi thay đổi bàn cờ và xác định thắng/thua.
+2. **Docker Sandbox Judge (`judge/`)**:
+   * Chạy từng Bot trong một Docker Container riêng biệt.
+   * Giới hạn tài nguyên nghiêm ngặt: CPU (chỉ định 1 core), RAM (tối đa 256MB), tắt kết nối mạng ngoài (`--net none`).
+3. **Tournament Manager (`tournament/`)**: Tự động hóa quá trình chia bảng, tính điểm, lập lịch và tiến hành các vòng đấu theo cấu hình JSON (`configs/`).
+4. **RESTful API Backend (`backend/`)**: FastAPI phục vụ việc đăng ký người dùng, nộp bài, xem danh sách giải đấu và gọi Worker execution.
+5. **Match Worker (`scripts/run_laptop_worker.py`)**: Tiến trình nền liên tục lấy các trận đấu chưa đấu trong hàng chờ, gọi `MatchRunner` để thi đấu và ghi lại kết quả.
+6. **Replay Visualizer (`frontend/replay.js`)**: Đọc file nhật ký trận đấu (JSON log) và tái hiện lại từng nước đi dưới dạng hoạt họa (Animation) trực quan trên trình duyệt.
+
+---
+
+## 🛠️ Công nghệ sử dụng
+
+* **Backend**: Python 3.9+, FastAPI, SQLAlchemy, Pydantic, Uvicorn, Pytest.
+* **Database**: SQLite (`uet_algorithm_battle.db`).
+* **Sandbox/Judge**: Docker Containerization, Subprocess.
+* **Frontend**: HTML5, CSS3, JavaScript (ES6+), Replay Visualizer JS.
+* **Deployment**: Render Cloud Platform (<https://duanoantuti.onrender.com>).
+
+---
+
+## 📁 Cấu trúc Thư mục Dự án
+
+```
+BT03-main/
+├── backend/                  # RESTful API Backend (FastAPI)
+│   ├── database/             # Schema CSDL & Cấu hình DB
+│   ├── models/               # SQLAlchemy ORM Models
+│   ├── routers/              # API Endpoints (Auth, Bots, Rooms, Tournaments...)
+│   ├── schemas/              # Pydantic Schemas cho Validation
+│   ├── services/             # Logic nghiệp vụ Backend
+│   └── main.py               # Entrypoint khởi chạy FastAPI App
+├── game/                     # Logic Động cơ Trò chơi (Game Engine)
+│   ├── board.py              # Bàn cờ
+│   ├── piece.py              # Quân cờ
+│   ├── move.py               # Nước đi
+│   ├── game_state.py         # Trạng thái trận đấu
+│   ├── game_engine.py        # Luồng thực thi trò chơi
+│   └── rule_set.py           # Bộ luật trò chơi
+├── judge/                    # Hệ thống Chấm điểm & Docker Sandbox
+│   ├── Dockerfile            # Cấu hình Môi trường Sandbox
+│   ├── match_runner.py       # Điều khiển trận đấu giữa 2 Bot
+│   ├── validator.py          # Thẩm định tính hợp lệ nước đi
+│   └── result.py             # Đóng gói kết quả trận đấu
+├── tournament/               # Động cơ Quản lý Giải đấu
+│   ├── swiss.py / swiss_manager.py # Thể thức Thụy Sĩ
+│   ├── knockout.py           # Thể thức Loại trực tiếp
+│   ├── round_robin.py        # Thể thức Vòng tròn
+│   ├── qualification.py      # Vòng Sơ loại
+│   └── match_scheduler.py    # Lập lịch thi đấu
+├── bots/                     # Mã nguồn & Lượt nộp bài Bot
+│   ├── api/                  # Bot SDK / Standard Interface
+│   ├── random_bot/           # Bot đánh ngẫu nhiên
+│   ├── greedy_bot/           # Bot tham ăn
+│   ├── aggressive_bot/       # Bot tấn công
+│   ├── tactical_bot/         # Bot chiến thuật
+│   └── user_1...user_6/      # Các bản nộp bài của sinh viên/người dùng
+├── configs/                  # Cấu hình các giai đoạn giải đấu (JSON)
+│   ├── qualification.json
+│   ├── swiss_stage.json
+│   ├── top16.json
+│   ├── quarterfinal.json
+│   ├── semifinal.json
+│   └── final.json
+├── match_logs/               # Nhật ký ghi lại các trận đấu đã diễn ra (JSON)
+├── frontend/                 # Giao diện Web Client
 │   ├── index.html            # Trang chủ
-│   ├── rules.html            # Trang luật chơi chi tiết 9x9
-│   ├── submit.html           # Trang quản lý & nộp Bot Python
-│   ├── rooms.html            # Sảnh phòng đấu thường 1v1
-│   ├── room_detail.html      # Chi tiết phòng đấu & bàn cờ trực tiếp
-│   ├── tournaments.html      # Danh sách & tạo giải đấu Knockout
-│   ├── tournament_detail.html# Nhánh đấu Bracket, duyệt đơn & bàn cờ trực quan Knockout
-│   └── ranking.html          # Bảng xếp hạng toàn server
-├── game/                     # Core Game Engine cờ Kéo - Búa - Bao 9x9
-│   ├── board.py              # Quản lý ma trận bàn cờ 9x9
-│   ├── game_engine.py        # Luật di chuyển, giao chiến và kiểm tra điều kiện thắng/thua
-│   ├── move.py               # Cấu trúc nước đi
-│   └── rule_set.py           # Quản lý thông số luật chơi
-├── judge/                    # Hệ thống chấm tự động & Docker Sandbox
-│   ├── validator.py          # Kiểm tra mã nguồn tĩnh bằng AST
-│   ├── sandbox.py            # Môi trường cô lập thực thi Bot
-│   ├── match_runner.py       # Điều phối trận đấu giữa 2 Bot
-│   └── Dockerfile            # Cấu hình Docker image cô lập cho Bot
-├── tests/                    # Bộ 62 Unit & Integration Tests (Pytest)
-├── tournament/               # Các thuật toán chia bảng, xếp hạt giống và quản lý luật giải đấu
-├── docker-compose.yml        # Khởi tạo nhanh MySQL 8.0 bằng Docker
-├── init_db.py                # Script tạo bảng Database thủ công
-├── requirements.txt          # Danh sách thư viện Python cần thiết
-├── run_all.bat               # Script khởi động nhanh trên Windows (Command Prompt)
-└── run_all.ps1               # Script khởi động nhanh trên Windows (PowerShell + hiển thị IP LAN)
+│   ├── replay.js             # Bộ xem lại diễn biến trận đấu
+│   └── ...                   # Các trang tính năng
+├── scripts/                  # Kịch bản vận hành & Đồng bộ CSDL
+│   ├── run_laptop_worker.py  # Worker thực thi trận đấu
+│   ├── sync_to_db.py         # Đồng bộ dữ liệu tổng quát
+│   └── sync_tournament_to_db.py # Đồng bộ giải đấu vào CSDL
+├── tests/                    # Bộ kiểm thử tự động (Pytest)
+└── uet_algorithm_battle.db   # File CSDL SQLite chính
 ```
 
 ---
 
-## 🛠️ Yêu Cầu Hệ Thống & Cài Đặt
+## 🚀 Hướng dẫn Cài đặt & Khởi chạy Cục bộ (Local)
 
-### 1. Yêu cầu môi trường
-- **Python**: Phiên bản `3.10` trở lên (khuyên dùng `3.11`).
-- **Cơ sở dữ liệu**:
-  - **Chế độ mặc định (Zero-Config)**: Nếu máy chưa bật MySQL, hệ thống **tự động chuyển sang dùng SQLite** (`uet_algorithm_battle.db`) ngay tại thư mục gốc mà không cần cài đặt gì thêm.
-  - **Chế độ MySQL**: Hỗ trợ MySQL 8.0 qua XAMPP hoặc Docker (`docker-compose up -d`).
-- **Trình duyệt**: Chrome, Edge, Firefox (hỗ trợ Live Server trên VS Code ở cổng `5500`).
+### 1. Yêu cầu Tiền đề
+* **Python**: Version $\ge 3.9$
+* **Docker**: Đã cài đặt và daemon Docker đang chạy (bắt buộc cho môi trường chấm điểm cách ly).
 
-### 2. Cài đặt thư viện Python
-Mở terminal tại thư mục gốc của dự án và chạy lệnh:
-
+### 2. Cài đặt Môi trường
 ```bash
+# Clone/Giải nén dự án
+cd BT03-main
+
+# Tạo môi trường ảo Python
+python -m venv venv
+
+# Kích hoạt môi trường ảo
+# Trên Linux/macOS:
+source venv/bin/activate
+# Trên Windows:
+# venv\Scripts\activate
+
+# Cài đặt các thư viện phụ thuộc
 pip install -r requirements.txt
 ```
 
----
-
-## 🚀 Hướng Dẫn Khởi Chạy Nhanh
-
-### Cách 1: Khởi chạy tự động trên Windows (Khuyên dùng)
-1. Mở thư mục dự án trong **VS Code**, chuột phải vào [`frontend/index.html`](frontend/index.html) và chọn **"Open with Live Server"** (hoặc bấm nút **Go Live** ở góc dưới bên phải VS Code để chạy cổng `5500`).
-2. Click đúp chuột vào file **`run_all.bat`** (hoặc chạy `./run_all.ps1` trong PowerShell).
-   - Hệ thống sẽ tự động khởi động Backend FastAPI tại địa chỉ `http://0.0.0.0:5000` và mở trình duyệt web.
-
-### Cách 2: Khởi chạy thủ công bằng dòng lệnh
-1. **Khởi động Backend API (Cổng 5000)**:
-   ```bash
-   python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 5000
-   ```
-2. **Khởi động Frontend (Cổng 5500)**:
-   - Dùng tiện ích **Live Server** trong VS Code hoặc chạy lệnh Python HTTP Server:
-   ```bash
-   python -m http.server 5500
-   ```
-3. **Các đường dẫn truy cập**:
-   - 🌐 **Giao diện Web**: `http://127.0.0.1:5500/frontend/index.html`
-   - ⚙️ **Backend API Root**: `http://127.0.0.1:5000/`
-   - 📄 **Tài liệu Swagger UI**: `http://127.0.0.1:5000/docs`
-
-### 🌍 Truy cập từ máy khác (Cùng Wi-Fi / Khác mạng)
-- **Khác mạng Wi-Fi (Qua Internet — Cloudflare Tunnel)**:
-  - Truy cập trực tiếp qua đường dẫn: **[https://blah-biology-fcc-ceo.trycloudflare.com/index.html](https://blah-biology-fcc-ceo.trycloudflare.com/index.html)**
-- **Cùng mạng Wi-Fi / LAN**: Chạy `run_all.ps1` để xem địa chỉ IP LAN của máy chủ (ví dụ `http://192.168.1.15:5500/frontend/index.html`). Đảm bảo mở cổng `5000` và `5500` trên Windows Firewall nếu bị chặn.
-
----
-
-## 🤖 Hướng Dẫn Viết Bot Python
-
-Mỗi file `.py` nộp lên hệ thống cần định nghĩa lớp `Bot` cùng phương thức `get_move(self, board, player_id)`:
-
-```python
-import random
-
-class Bot:
-    def __init__(self):
-        self.directions = [
-            (-1, 0), (1, 0), (0, -1), (0, 1),
-            (-1, -1), (-1, 1), (1, -1), (1, 1)
-        ]
-
-    def get_move(self, board, player_id):
-        """
-        Tham số:
-        - board: Ma trận 9x9. Mỗi ô là None hoặc dict {'player': 'RED'|'BLUE', 'type': 'ROCK'|'PAPER'|'SCISSORS'}
-        - player_id: 'RED' (Căn cứ tại (8, 4)) hoặc 'BLUE' (Căn cứ tại (0, 4))
-
-        Trả về:
-        - Tuple ((from_row, from_col), (to_row, to_col))
-        """
-        own_base = (8, 4) if player_id == "RED" else (0, 4)
-        valid_moves = []
-
-        for r in range(9):
-            for c in range(9):
-                cell = board[r][c]
-                if cell and cell.get("player") == player_id:
-                    for dr, dc in self.directions:
-                        nr, nc = r + dr, c + dc
-                        if 0 <= nr < 9 and 0 <= nc < 9 and (nr, nc) != own_base:
-                            target = board[nr][nc]
-                            if target is None or target.get("player") != player_id:
-                                valid_moves.append(((r, c), (nr, nc)))
-
-        return random.choice(valid_moves) if valid_moves else None
-```
-
-> **Lưu ý bảo mật**: Không import các module thao tác hệ thống hoặc mạng (`os`, `sys`, `subprocess`, `socket`, `requests`, `urllib`, `pathlib`,...) và không dùng các hàm `eval()`, `exec()`, `open()`. Thời gian suy nghĩ tối đa cho mỗi lượt là **2000ms (2 giây)**.
-
----
-
-## 🧪 Kiểm Thử Tự Động (Unit & Integration Tests)
-
-Dự án đi kèm bộ **62 bài kiểm thử tự động** bao phủ toàn bộ Game Engine, Bot Validator, Sandbox, Phòng đấu PvP, Bảng xếp hạng và Giải đấu Knockout (bao gồm xử lý BYE, duyệt đơn, điểm danh và xử thua `FORFEIT`).
-
-Chạy toàn bộ kiểm thử bằng lệnh:
-
+### 3. Build Docker Image cho Sandbox
+Để hệ thống chấm điểm thực thi các Bot an toàn:
 ```bash
-python -m pytest
+docker build -t bot_sandbox:latest ./judge
+```
+
+### 4. Khởi chạy Backend Server
+```bash
+# Chạy FastAPI Server với Uvicorn tại http://localhost:8000
+uvicorn backend.main:app --reload
+```
+* **Tài liệu Swagger API**: Truy cập `http://localhost:8000/docs` sau khi server hoạt động.
+
+### 5. Khởi chạy Frontend Cục bộ
+```bash
+python -m http.server 8080 --directory frontend
+```
+Truy cập giao diện Web tại `http://localhost:8080` (hoặc truy cập bản Production tại <https://duanoantuti.onrender.com>).
+
+---
+
+## 🔄 Vận hành Giải đấu & Match Worker
+
+1. **Khởi chạy Match Worker xử lý hàng chờ trận đấu**:
+   ```bash
+   python scripts/run_laptop_worker.py
+   ```
+2. **Đồng bộ dữ liệu trận đấu và bảng xếp hạng vào CSDL**:
+   ```bash
+   python scripts/sync_tournament_to_db.py
+   ```
+
+---
+
+## 🧪 Kiểm thử Tự động (Testing)
+
+Dự án sử dụng `pytest` để kiểm thử tự động:
+```bash
+# Chạy tất cả bài kiểm thử
+pytest
+
+# Kiểm thử Động cơ game & Giải đấu
+pytest tests/test_game.py
+pytest tests/test_tournament.py
+
+# Kiểm thử Judge & Backend APIs
+pytest tests/test_judge.py
+pytest tests/test_backend.py
 ```
 
 ---
 
-## 📚 Tài Liệu Tham Khảo Thêm
+## 📜 Giấy phép & Tác giả
 
-Xem thêm tài liệu chi tiết trong thư mục [`docs/`](docs/):
-- [`docs/architecture.md`](docs/architecture.md) — Kiến trúc tổng thể hệ thống.
-- [`docs/game-rules.md`](docs/game-rules.md) — Đặc tả luật cờ Kéo - Búa - Bao 9x9.
-- [`docs/bot-api.md`](docs/bot-api.md) — Tài liệu API dành cho người lập trình Bot.
-- [`docs/tournament-rules.md`](docs/tournament-rules.md) — Quy chế giải đấu.
+Dự án được xây dựng và phát triển phục vụ môn học / bài tập lớn tại **Trường Đại học Công nghệ - Đại học Quốc gia Hà Nội (UET - VNU)**.
