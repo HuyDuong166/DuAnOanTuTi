@@ -12,6 +12,8 @@ from backend.schemas.bot import BotResponse, BotDetailResponse, BotVersionRespon
 
 router = APIRouter()
 
+ENABLE_AUTO_MATCH = os.getenv("ENABLE_AUTO_MATCH", "false").lower() == "true"
+
 @router.post("/upload")
 async def upload_bot(
     name: Optional[str] = Form(None),
@@ -25,7 +27,7 @@ async def upload_bot(
     Nộp Bot Python:
     - Nếu có bot_id: Nộp phiên bản mới (v2, v3...) cho bot đã có.
     - Nếu không có bot_id: Tạo bot mới với phiên bản v1.
-    Tự động chạy kiểm tra trong Sandbox và trả về trạng thái READY / INVALID.
+    Tự động chạy kiểm tra trong Sandbox (chỉ khi ENABLE_AUTO_MATCH=True).
     """
     content = await file.read()
     filename = file.filename or "bot.py"
@@ -38,6 +40,14 @@ async def upload_bot(
             filename=filename,
             content=content
         )
+        
+        # ➕ SỬA/THÊM: Bỏ qua Sandbox nếu đang ở Render
+        if not ENABLE_AUTO_MATCH:
+            version.status = "READY"
+            version.validation_error = None
+            db.commit()
+            db.refresh(version)
+
         return {
             "message": f"Nộp phiên bản v{version.version_number} thành công!",
             "bot_id": bot_id,
@@ -57,8 +67,18 @@ async def upload_bot(
             content=content
         )
         curr_ver = bot.current_version
+        
+        # ➕ SỬA/THÊM: Bỏ qua Sandbox nếu đang ở Render
+        if not ENABLE_AUTO_MATCH:
+            bot.status = "READY"
+            if curr_ver:
+                curr_ver.status = "READY"
+                curr_ver.validation_error = None
+            db.commit()
+            db.refresh(bot)
+
         return {
-            "message": "Tạo bot và kiểm tra qua Sandbox thành công!",
+            "message": "Tạo bot thành công!",
             "id": bot.id,
             "bot_id": bot.id,
             "name": bot.name,
@@ -110,6 +130,14 @@ async def upload_bot_version(
         filename=filename,
         content=content
     )
+    
+    # ➕ SỬA/THÊM: Bỏ qua Sandbox trên Render
+    if not ENABLE_AUTO_MATCH:
+        version.status = "READY"
+        version.validation_error = None
+        db.commit()
+        db.refresh(version)
+
     return {
         "message": f"Nộp phiên bản v{version.version_number} thành công!",
         "bot_id": bot_id,
@@ -125,6 +153,14 @@ def revalidate_bot(
     db: Session = Depends(get_db)
 ):
     """Chạy kiểm tra lại Sandbox cho bot"""
+    # ➕ SỬA/THÊM: Chặn Revalidate Docker trên Render
+    if not ENABLE_AUTO_MATCH:
+        return {
+            "message": "Chế độ Render Server: Tự động đánh dấu Bot hợp lệ (READY).",
+            "bot_id": bot_id,
+            "status": "READY"
+        }
+
     return BotService.revalidate_bot(db, current_user.id, bot_id)
 
 @router.delete("/{bot_id}")

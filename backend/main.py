@@ -4,10 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.config.settings import settings
-from backend.routers import (
-    auth, users, teams, submissions,
-    matches, games, ranking, rooms, tournaments, bots
-)
+# ✏️ SỬA DÒNG IMPORT ROUTERS
+from backend.routers import auth, bots, matches, ranking, rooms, submissions, teams, tournaments, users, admin  # <-- THÊM 'admin'
 
 app = FastAPI(title=settings.PROJECT_NAME)
 
@@ -31,6 +29,8 @@ app.include_router(ranking.router, prefix="/api/ranking", tags=["Ranking"])
 app.include_router(rooms.router, prefix="/api/rooms", tags=["Rooms"])
 app.include_router(tournaments.router, prefix="/api/tournaments", tags=["Tournaments"])
 app.include_router(bots.router, prefix="/api/bots", tags=["Bots"])
+# ➕ THÊM DÒNG NÀY VÀO TRONG MAIN.PY
+app.include_router(admin.router)
 
 # Mount thư mục Frontend để phục vụ giao diện trực tiếp trên cổng 5500
 frontend_dir = os.path.join(settings.PROJECT_ROOT, "frontend")
