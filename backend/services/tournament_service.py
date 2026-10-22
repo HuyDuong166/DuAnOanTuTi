@@ -332,13 +332,8 @@ class TournamentService:
     def start_tournament(db: Session, tournament_id: int, user: User) -> TournamentDetailResponse:
         """
         Khởi động giải đấu Knockout:
-        - Kiểm tra người có quyền tổ chức (Chủ giải hoặc Admin).
-        - Đóng đăng ký, chuyển trạng thái sang IN_PROGRESS.
-        - Lấy danh sách tuyển thủ đã được ACCEPTED (tự động fallback duyệt nếu chưa qua bước duyệt thủ công).
-        - Kiểm tra tối thiểu min_participants (>= 4).
-        - Xáo trộn ngẫu nhiên danh sách người chơi.
-        - Thuật toán tổng quát phân bổ đặc cách BYE cho mọi số lượng tuyển thủ N >= 4.
-        - Thiết lập hạn chót 10 phút (participation_deadline) cho các cặp đấu thật ở Vòng 1.
+        - Tạo trước toàn bộ các Vòng và ô Trận đấu trong CSDL.
+        - Gán tuyển thủ cho Vòng 1 và kích hoạt thi đấu tự động liên hoàn.
         """
         t = db.query(Tournament).filter(Tournament.id == tournament_id).first()
         if not t:
@@ -357,7 +352,6 @@ class TournamentService:
             .order_by(TournamentParticipant.seed.asc())
             .all()
         )
-        # Fallback hỗ trợ backward-compat: nếu chưa có ai ACCEPTED mà có PENDING >= min_participants
         if not accepted_participants:
             pending = (
                 db.query(TournamentParticipant)
@@ -395,7 +389,7 @@ class TournamentService:
         bye_participants = accepted_participants[:num_byes]
         non_bye_participants = accepted_participants[num_byes:]
 
-        # 4. Tạo các vòng thi đấu
+        # 4. Tạo TẤT CẢ các vòng thi đấu
         created_rounds = []
         for r_num in range(1, total_rounds + 1):
             matches_in_round = 2 ** (total_rounds - r_num)
@@ -418,75 +412,9 @@ class TournamentService:
             db.flush()
             created_rounds.append(round_obj)
 
-        round_1 = created_rounds[0]
-        round_1_matches = []
-        now = datetime.utcnow()
-        deadline_10m = now + timedelta(minutes=10)
-        current_match_order = 0
-
-        # Cặp BYE ở vòng 1: Tuyển thủ được đặc cách vào thẳng vòng 2
-        for bp in bye_participants:
-            m = TournamentMatch(
-                tournament_id=t.id,
-                round_id=round_1.id,
-                match_order=current_match_order,
-                player1_id=bp.user_id,
-                player1_bot_id=bp.bot_id,
-                player2_id=None,
-                player2_bot_id=None,
-                winner_id=bp.user_id,
-                is_bye=True,
-                status="COMPLETED",
-                result_reason="BYE"
-            )
-            db.add(m)
-            db.flush()
-            round_1_matches.append(m)
-            current_match_order += 1
-
-        # Cặp thi đấu thật ở vòng 1: Thiết lập thời hạn 10 phút tham gia
-        for i in range(0, len(non_bye_participants), 2):
-            p1 = non_bye_participants[i]
-            p2 = non_bye_participants[i+1] if (i+1) < len(non_bye_participants) else None
-            # Tạo trận đấu cho Vòng 1
-            is_bye_match = (p2 is None)
-            if is_bye_match:
-                m = TournamentMatch(
-                    tournament_id=t.id,
-                    round_id=round_1.id,
-                    match_order=current_match_order,
-                    player1_id=p1.user_id,
-                    player1_bot_id=p1.bot_id,
-                    winner_id=p1.user_id,
-                    is_bye=True,
-                    status="COMPLETED",
-                    result_reason="BYE"
-                )
-                db.add(m)
-            else:
-                m = TournamentMatch(
-                    tournament_id=t.id,
-                    round_id=round_1.id,
-                    match_order=current_match_order,
-                    player1_id=p1.user_id,
-                    player1_bot_id=p1.bot_id,
-                    player2_id=p2.user_id,
-                    player2_bot_id=p2.bot_id,
-                    player1_joined_at=now,
-                    player2_joined_at=now,
-                    status="PLAYING"
-                )
-                db.add(m)
-                db.flush()
-                # Kích hoạt thực thi trận đấu ngay lập tức
-                TournamentService._execute_tournament_match(db, m)
-
-            round_1_matches.append(m)
-            current_match_order += 1
-
-        # Tạo placeholder matches cho các vòng sau (Round 2 đến Chung kết)
-        all_rounds_matches = {1: round_1_matches}
-        for r_num in range(2, total_rounds + 1):
+        # 5. TẠO TRƯỚC TẤT CẢ TRẬN ĐẤU CHO CÁC VÒNG TRONG CSDL (Bao gồm ô Chung kết)
+        all_rounds_matches = {}
+        for r_num in range(1, total_rounds + 1):
             cur_round = created_rounds[r_num - 1]
             matches_count = 2 ** (total_rounds - r_num)
             cur_matches = []
@@ -506,12 +434,55 @@ class TournamentService:
                 cur_matches.append(m)
             all_rounds_matches[r_num] = cur_matches
 
-        # Đẩy ngay những người thắng suất đặc cách BYE từ Vòng 1 lên Vòng 2!
+        # 6. Gán tuyển thủ và kích hoạt Vòng 1
+        round_1_matches = all_rounds_matches[1]
+        now = datetime.utcnow()
+        current_match_order = 0
+
+        # Cặp BYE ở vòng 1:
+        for bp in bye_participants:
+            m = round_1_matches[current_match_order]
+            m.player1_id = bp.user_id
+            m.player1_bot_id = bp.bot_id
+            m.winner_id = bp.user_id
+            m.is_bye = True
+            m.status = "COMPLETED"
+            m.result_reason = "BYE"
+            db.flush()
+            current_match_order += 1
+
+        # Cặp thi đấu thật ở vòng 1:
+        for i in range(0, len(non_bye_participants), 2):
+            p1 = non_bye_participants[i]
+            p2 = non_bye_participants[i+1] if (i+1) < len(non_bye_participants) else None
+            m = round_1_matches[current_match_order]
+
+            if p2 is None:
+                m.player1_id = p1.user_id
+                m.player1_bot_id = p1.bot_id
+                m.winner_id = p1.user_id
+                m.is_bye = True
+                m.status = "COMPLETED"
+                m.result_reason = "BYE"
+                db.flush()
+            else:
+                m.player1_id = p1.user_id
+                m.player1_bot_id = p1.bot_id
+                m.player2_id = p2.user_id
+                m.player2_bot_id = p2.bot_id
+                m.player1_joined_at = now
+                m.player2_joined_at = now
+                m.status = "PLAYING"
+                db.flush()
+                # Kích hoạt thực thi trận đấu ngay lập tức
+                TournamentService._execute_tournament_match(db, m)
+
+            current_match_order += 1
+
+        # Đẩy người thắng từ các trận BYE vòng 1 lên Vòng 2
         for m in round_1_matches:
             if m.is_bye and m.winner_id:
-                TournamentService._propagate_winner_to_next_round(
-                    db, m, 1, total_rounds, all_rounds_matches
-                )
+                TournamentService._on_match_concluded(db, m)
 
         t.status = "IN_PROGRESS"
         db.commit()
@@ -899,8 +870,9 @@ class TournamentService:
                 else:
                     next_match.player2_id = m.winner_id
                     next_match.player2_bot_id = winner_bot_id
+                db.flush()
 
-    # Nếu cả 2 tuyển thủ đã xuất hiện ở vòng sau -> Tự động thi đấu ngay lập tức
+                # Khi cả 2 tuyển thủ thắng từ vòng trước đã hội tụ -> Tự động đấu tiếp trận vòng sau lập tức!
                 if next_match.player1_id and next_match.player2_id and next_match.status != "COMPLETED":
                     now = datetime.utcnow()
                     next_match.player1_joined_at = now
@@ -917,33 +889,31 @@ class TournamentService:
             )
             if remaining_matches == 0:
                 cur_round.status = "COMPLETED"
-                next_round.status = "IN_PROGRESS"
+                if next_round.status == "PENDING":
+                    next_round.status = "IN_PROGRESS"
 
-                # Kích hoạt các trận ở vòng tiếp theo
                 next_matches = db.query(TournamentMatch).filter(TournamentMatch.round_id == next_round.id).all()
                 now = datetime.utcnow()
                 for nm in next_matches:
-                    if nm.player1_id and nm.player2_id and nm.status != "COMPLETED":
+                    if nm.player1_id and nm.player2_id and nm.status not in ["PLAYING", "COMPLETED"]:
                         nm.status = "PLAYING"
                         nm.player1_joined_at = now
                         nm.player2_joined_at = now
                         db.flush()
                         TournamentService._execute_tournament_match(db, nm)
-                    elif nm.player1_id and not nm.player2_id:
-                        # Đối thủ vắng mặt do double forfeit ở nhánh trước -> nhận BYE tự động thắng
+                    elif nm.player1_id and not nm.player2_id and nm.status == "WAITING":
                         nm.is_bye = True
                         nm.winner_id = nm.player1_id
                         nm.status = "COMPLETED"
                         nm.result_reason = "BYE"
                         TournamentService._on_match_concluded(db, nm)
-                    elif nm.player2_id and not nm.player1_id:
+                    elif nm.player2_id and not nm.player1_id and nm.status == "WAITING":
                         nm.is_bye = True
                         nm.winner_id = nm.player2_id
                         nm.status = "COMPLETED"
                         nm.result_reason = "BYE"
                         TournamentService._on_match_concluded(db, nm)
-                    elif not nm.player1_id and not nm.player2_id:
-                        # Cả 2 nhánh trước đều double forfeit
+                    elif not nm.player1_id and not nm.player2_id and nm.status == "WAITING":
                         nm.status = "FORFEIT"
                         nm.result_reason = "DOUBLE_NO_SHOW"
                         TournamentService._on_match_concluded(db, nm)
