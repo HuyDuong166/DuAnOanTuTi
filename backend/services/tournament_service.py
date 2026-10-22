@@ -448,11 +448,12 @@ class TournamentService:
         for i in range(0, len(non_bye_participants), 2):
             p1 = non_bye_participants[i]
             p2 = non_bye_participants[i+1] if (i+1) < len(non_bye_participants) else None
+            # Tạo trận đấu cho Vòng 1
             is_bye_match = (p2 is None)
             if is_bye_match:
                 m = TournamentMatch(
                     tournament_id=t.id,
-                    round_id=r1.id,
+                    round_id=round_1.id,
                     match_order=current_match_order,
                     player1_id=p1.user_id,
                     player1_bot_id=p1.bot_id,
@@ -465,17 +466,20 @@ class TournamentService:
             else:
                 m = TournamentMatch(
                     tournament_id=t.id,
-                    round_id=r1.id,
+                    round_id=round_1.id,
                     match_order=current_match_order,
                     player1_id=p1.user_id,
                     player1_bot_id=p1.bot_id,
                     player2_id=p2.user_id,
                     player2_bot_id=p2.bot_id,
+                    # ĐẶT TẤT CẢ LÀ TRUYỂN THẲNG ĐÃ ĐIỂM DANH
+                    player1_checked_in=True,
+                    player2_checked_in=True,
                     status="PLAYING"
                 )
                 db.add(m)
                 db.flush()
-                # Tự động thực thi trận đấu ngay mà không chờ điểm danh
+                # Kích hoạt thực thi trận đấu ngay lập tức
                 TournamentService._execute_tournament_match(db, m)
 
             round_1_matches.append(m)
@@ -659,6 +663,14 @@ class TournamentService:
         from game.game_result import ResultType
         from judge.match_runner import DockerBotWrapper
         from tournament.rule_manager import TournamentRuleManager
+
+        now = datetime.utcnow()
+        if not m.player1_joined_at:
+            m.player1_joined_at = now
+        if not m.player2_joined_at:
+            m.player2_joined_at = now
+        m.status = "PLAYING"
+        db.flush()
 
         red_file = None
         blue_file = None
@@ -909,10 +921,12 @@ class TournamentService:
                 next_matches = db.query(TournamentMatch).filter(TournamentMatch.round_id == next_round.id).all()
                 now = datetime.utcnow()
                 for nm in next_matches:
-                    if nm.player1_id and nm.player2_id:
-                        nm.status = "READY"
-                        nm.ready_at = now
-                        nm.participation_deadline = now + timedelta(minutes=10)
+                    if nm.player1_id and nm.player2_id and nm.status != "COMPLETED":
+                        nm.status = "PLAYING"
+                        nm.player1_joined_at = now
+                        nm.player2_joined_at = now
+                        db.flush()
+                        TournamentService._execute_tournament_match(db, nm)
                     elif nm.player1_id and not nm.player2_id:
                         # Đối thủ vắng mặt do double forfeit ở nhánh trước -> nhận BYE tự động thắng
                         nm.is_bye = True
