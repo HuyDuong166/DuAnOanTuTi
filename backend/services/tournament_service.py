@@ -476,7 +476,6 @@ class TournamentService:
                     player2_joined_at=now,
                     status="PLAYING"
                 )
-                )
                 db.add(m)
                 db.flush()
                 # Kích hoạt thực thi trận đấu ngay lập tức
