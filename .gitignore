@@ -1,0 +1,23 @@
+# Môi trường ảo Python & Cache
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.pyc
+*.pyo
+
+# CSDL local & File rác
+*.db
+*.sqlite3
+.DS_Store
+
+# Log trận đấu tạm thời
+match_logs/
+.pytest_cache/
+.coverage
+
+# File cấu hình chứa mật khẩu bí mật
+.env
+
+qualification_result_laptop_*.json
