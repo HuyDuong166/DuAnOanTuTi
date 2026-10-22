@@ -8,6 +8,6 @@
   "points_loss": 0,
   "advancing_per_group": 1,
   "board_size": 4,
-  "max_turns": 100,
+  "max_turns": 50,
   "obstacles": []
 }

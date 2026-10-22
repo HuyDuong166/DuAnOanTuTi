@@ -449,23 +449,35 @@ class TournamentService:
             p1 = non_bye_participants[i]
             p2 = non_bye_participants[i+1] if (i+1) < len(non_bye_participants) else None
             is_bye_match = (p2 is None)
-            m = TournamentMatch(
-                tournament_id=t.id,
-                round_id=round_1.id,
-                match_order=current_match_order,
-                player1_id=p1.user_id,
-                player1_bot_id=p1.bot_id,
-                player2_id=p2.user_id if p2 else None,
-                player2_bot_id=p2.bot_id if p2 else None,
-                winner_id=p1.user_id if is_bye_match else None,
-                is_bye=is_bye_match,
-                status="COMPLETED" if is_bye_match else "READY",
-                ready_at=None if is_bye_match else now,
-                participation_deadline=None if is_bye_match else deadline_10m,
-                result_reason="BYE" if is_bye_match else None
-            )
-            db.add(m)
-            db.flush()
+            if is_bye_match:
+                m = TournamentMatch(
+                    tournament_id=t.id,
+                    round_id=r1.id,
+                    match_order=current_match_order,
+                    player1_id=p1.user_id,
+                    player1_bot_id=p1.bot_id,
+                    winner_id=p1.user_id,
+                    is_bye=True,
+                    status="COMPLETED",
+                    result_reason="BYE"
+                )
+                db.add(m)
+            else:
+                m = TournamentMatch(
+                    tournament_id=t.id,
+                    round_id=r1.id,
+                    match_order=current_match_order,
+                    player1_id=p1.user_id,
+                    player1_bot_id=p1.bot_id,
+                    player2_id=p2.user_id,
+                    player2_bot_id=p2.bot_id,
+                    status="PLAYING"
+                )
+                db.add(m)
+                db.flush()
+                # Tự động thực thi trận đấu ngay mà không chờ điểm danh
+                TournamentService._execute_tournament_match(db, m)
+
             round_1_matches.append(m)
             current_match_order += 1
 
@@ -876,7 +888,12 @@ class TournamentService:
                 else:
                     next_match.player2_id = m.winner_id
                     next_match.player2_bot_id = winner_bot_id
-                db.flush()
+
+    # Nếu cả 2 tuyển thủ đã xuất hiện ở vòng sau -> Tự động thi đấu ngay lập tức
+                if next_match.player1_id and next_match.player2_id and next_match.status != "COMPLETED":
+                    next_match.status = "PLAYING"
+                    db.flush()
+                    TournamentService._execute_tournament_match(db, next_match)
 
             # Kiểm tra xem vòng hiện tại đã xong hết các trận chưa
             remaining_matches = (

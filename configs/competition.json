@@ -6,8 +6,8 @@
     "game_rules": {
         "board_width": 9,
         "board_height": 9,
-        "max_turns_per_game": 200,
-        "time_limit_per_move_ms": 2000,
+        "max_turns_per_game": 50,
+        "time_limit_per_move_ms": 1000,
         "memory_limit_mb": 256
     }
 }
