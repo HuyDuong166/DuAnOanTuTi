@@ -472,10 +472,10 @@ class TournamentService:
                     player1_bot_id=p1.bot_id,
                     player2_id=p2.user_id,
                     player2_bot_id=p2.bot_id,
-                    # ĐẶT TẤT CẢ LÀ TRUYỂN THẲNG ĐÃ ĐIỂM DANH
-                    player1_checked_in=True,
-                    player2_checked_in=True,
+                    player1_joined_at=now,
+                    player2_joined_at=now,
                     status="PLAYING"
+                )
                 )
                 db.add(m)
                 db.flush()
@@ -903,6 +903,9 @@ class TournamentService:
 
     # Nếu cả 2 tuyển thủ đã xuất hiện ở vòng sau -> Tự động thi đấu ngay lập tức
                 if next_match.player1_id and next_match.player2_id and next_match.status != "COMPLETED":
+                    now = datetime.utcnow()
+                    next_match.player1_joined_at = now
+                    next_match.player2_joined_at = now
                     next_match.status = "PLAYING"
                     db.flush()
                     TournamentService._execute_tournament_match(db, next_match)
