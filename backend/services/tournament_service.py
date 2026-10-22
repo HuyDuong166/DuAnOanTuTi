@@ -434,6 +434,10 @@ class TournamentService:
                 cur_matches.append(m)
             all_rounds_matches[r_num] = cur_matches
 
+        # Cập nhật trạng thái giải đấu sang IN_PROGRESS trước khi các trận đấu chạy
+        t.status = "IN_PROGRESS"
+        db.flush()
+
         # 6. Gán tuyển thủ và kích hoạt Vòng 1
         round_1_matches = all_rounds_matches[1]
         now = datetime.utcnow()
@@ -484,7 +488,10 @@ class TournamentService:
             if m.is_bye and m.winner_id:
                 TournamentService._on_match_concluded(db, m)
 
-        t.status = "IN_PROGRESS"
+        # Chỉ giữ IN_PROGRESS nếu giải đấu chưa hoàn thành
+        if t.status != "COMPLETED":
+            t.status = "IN_PROGRESS"
+
         db.commit()
         return TournamentService.get_tournament_detail(db, t.id)
 
