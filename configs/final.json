@@ -1,0 +1,14 @@
+{
+    "phase_name": "Grand Final (Chung Kết)",
+    "format": "Knockout",
+    "match_format": "BO7",
+    "includes_third_place_match": true,
+    "total_advancing": 1,
+    "next_phase": null,
+    "board_size": 9,
+    "max_turns": 200,
+    "obstacles": [
+        [3, 3], [3, 4], [3, 5],
+        [5, 3], [5, 4], [5, 5]
+    ]
+}

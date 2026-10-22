@@ -1,0 +1,13 @@
+{
+  "competition_name": "UET Algorithm Battle - Qualification",
+  "stage": "qualification",
+  "num_groups": 128,
+  "group_format": "round_robin",
+  "points_win": 3,
+  "points_draw": 1,
+  "points_loss": 0,
+  "advancing_per_group": 1,
+  "board_size": 4,
+  "max_turns": 50,
+  "obstacles": []
+}

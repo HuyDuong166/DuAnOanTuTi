@@ -1,0 +1,12 @@
+{
+    "phase_name": "Quarterfinals (Tứ Kết)",
+    "format": "Knockout",
+    "match_format": "BO5",
+    "total_advancing": 4,
+    "next_phase": "semifinal",
+    "board_size": 9,
+    "obstacles": [
+        [3, 3], [3, 4], [3, 5],
+        [5, 3], [5, 4], [5, 5]
+    ]
+}
