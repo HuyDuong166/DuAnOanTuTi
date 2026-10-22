@@ -23,11 +23,13 @@ class Competition:
         self.current_phase = "QUALIFICATION"
         self.qualification.partition_teams(self.teams)
 
+    # Tệp: tournament/competition.py
+
     def start_playoffs(self):
         self.current_phase = "PLAYOFFS"
-        top_32 = self.qualification.get_top_32_advancing()
-        r32_pairings = generate_knockout_bracket(top_32)
-        self.playoffs_bracket["round_of_32"] = r32_pairings
+        advancing_teams = self.qualification.get_top_32_advancing()
+        playoff_pairings = generate_knockout_bracket(advancing_teams)
+        self.playoffs_bracket["round_1"] = playoff_pairings
         return self.playoffs_bracket
 
     def get_summary(self) -> Dict[str, Any]:

@@ -328,172 +328,165 @@ class TournamentService:
             for p in participants_db
         ]
 
-    @staticmethod
-    def start_tournament(db: Session, tournament_id: int, user: User) -> TournamentDetailResponse:
-        """
-        Khởi động giải đấu Knockout:
-        - Tạo trước toàn bộ các Vòng và ô Trận đấu trong CSDL.
-        - Gán tuyển thủ cho Vòng 1 và kích hoạt thi đấu tự động liên hoàn.
-        """
-        t = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-        if not t:
-            raise HTTPException(status_code=404, detail="Không tìm thấy giải đấu")
+@staticmethod
+def start_tournament(db: Session, tournament_id: int, user: User) -> TournamentDetailResponse:
+    t = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Không tìm thấy giải đấu")
 
-        if t.creator_id != user.id and not getattr(user, "is_admin", False):
-            raise HTTPException(status_code=403, detail="Chỉ người tạo giải hoặc Admin mới có quyền bắt đầu giải đấu")
+    if t.creator_id != user.id and not getattr(user, "is_admin", False):
+        raise HTTPException(status_code=403, detail="Chỉ người tạo giải hoặc Admin mới có quyền bắt đầu giải đấu")
 
-        if t.status not in ["REGISTRATION", "REGISTRATION_OPEN"]:
-            raise HTTPException(status_code=400, detail="Giải đấu đã bắt đầu hoặc đã kết thúc")
+    if t.status not in ["REGISTRATION", "REGISTRATION_OPEN"]:
+        raise HTTPException(status_code=400, detail="Giải đấu đã bắt đầu hoặc đã kết thúc")
 
-        # 1. Lấy danh sách tuyển thủ đã ACCEPTED
-        accepted_participants = (
+    # 1. Lấy danh sách tuyển thủ ACCEPTED
+    accepted_participants = (
+        db.query(TournamentParticipant)
+        .filter(TournamentParticipant.tournament_id == t.id, TournamentParticipant.status == "ACCEPTED")
+        .order_by(TournamentParticipant.seed.asc())
+        .all()
+    )
+    if not accepted_participants:
+        pending = (
             db.query(TournamentParticipant)
-            .filter(TournamentParticipant.tournament_id == t.id, TournamentParticipant.status == "ACCEPTED")
+            .filter(TournamentParticipant.tournament_id == t.id, TournamentParticipant.status == "PENDING")
             .order_by(TournamentParticipant.seed.asc())
             .all()
         )
-        if not accepted_participants:
-            pending = (
-                db.query(TournamentParticipant)
-                .filter(TournamentParticipant.tournament_id == t.id, TournamentParticipant.status == "PENDING")
-                .order_by(TournamentParticipant.seed.asc())
-                .all()
-            )
-            min_req = getattr(t, "min_participants", 4) or 4
-            if len(pending) >= min_req:
-                for p in pending:
-                    p.status = "ACCEPTED"
-                db.flush()
-                accepted_participants = pending
-
-        n = len(accepted_participants)
-        min_p = getattr(t, "min_participants", 4) or 4
-        if n < min_p:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Số lượng người chơi được chấp nhận hiện tại là {n}. Giải đấu yêu cầu tối thiểu {min_p} người chơi để bắt đầu!"
-            )
-
-        # 2. Xáo trộn ngẫu nhiên danh sách người chơi
-        random.shuffle(accepted_participants)
-        for idx, p in enumerate(accepted_participants):
-            p.seed = idx + 1
-        db.flush()
-
-        # 3. Tính toán kích thước nhánh Knockout và số suất đặc cách BYE
-        k = math.ceil(math.log2(n))
-        bracket_size = 2 ** k
-        num_byes = bracket_size - n
-        total_rounds = k
-
-        bye_participants = accepted_participants[:num_byes]
-        non_bye_participants = accepted_participants[num_byes:]
-
-        # 4. Tạo TẤT CẢ các vòng thi đấu
-        created_rounds = []
-        for r_num in range(1, total_rounds + 1):
-            matches_in_round = 2 ** (total_rounds - r_num)
-            if matches_in_round == 1:
-                r_name = "Chung kết"
-            elif matches_in_round == 2:
-                r_name = "Bán kết"
-            elif matches_in_round == 4:
-                r_name = "Tứ kết"
-            else:
-                r_name = f"Vòng {r_num}"
-
-            round_obj = TournamentRound(
-                tournament_id=t.id,
-                round_number=r_num,
-                round_name=r_name,
-                status="IN_PROGRESS" if r_num == 1 else "PENDING"
-            )
-            db.add(round_obj)
+        min_req = getattr(t, "min_participants", 4) or 4
+        if len(pending) >= min_req:
+            for p in pending:
+                p.status = "ACCEPTED"
             db.flush()
-            created_rounds.append(round_obj)
+            accepted_participants = pending
 
-        # 5. TẠO TRƯỚC TẤT CẢ TRẬN ĐẤU CHO CÁC VÒNG TRONG CSDL (Bao gồm ô Chung kết)
-        all_rounds_matches = {}
-        for r_num in range(1, total_rounds + 1):
-            cur_round = created_rounds[r_num - 1]
-            matches_count = 2 ** (total_rounds - r_num)
-            cur_matches = []
-            for m_ord in range(matches_count):
-                m = TournamentMatch(
-                    tournament_id=t.id,
-                    round_id=cur_round.id,
-                    match_order=m_ord,
-                    player1_id=None,
-                    player2_id=None,
-                    winner_id=None,
-                    is_bye=False,
-                    status="WAITING"
-                )
-                db.add(m)
-                db.flush()
-                cur_matches.append(m)
-            all_rounds_matches[r_num] = cur_matches
+    n = len(accepted_participants)
+    min_p = getattr(t, "min_participants", 4) or 4
+    if n < min_p:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Số lượng người chơi được chấp nhận hiện tại là {n}. Giải đấu yêu cầu tối thiểu {min_p} người chơi để bắt đầu!"
+        )
 
-        # Cập nhật trạng thái giải đấu sang IN_PROGRESS trước khi các trận đấu chạy
-        t.status = "IN_PROGRESS"
+    # 2. Xáo trộn danh sách hạt giống ngẫu nhiên
+    random.shuffle(accepted_participants)
+    for idx, p in enumerate(accepted_participants):
+        p.seed = idx + 1
+    db.flush()
+
+    # 3. Tính toán kích thước sơ đồ Knockout
+    k = math.ceil(math.log2(n))
+    bracket_size = 2 ** k
+    num_byes = bracket_size - n
+    total_rounds = k
+
+    # 4. Khởi tạo danh sách các Vòng đấu
+    created_rounds = []
+    for r_num in range(1, total_rounds + 1):
+        matches_in_round = 2 ** (total_rounds - r_num)
+        if matches_in_round == 1:
+            r_name = "Chung kết"
+        elif matches_in_round == 2:
+            r_name = "Bán kết"
+        elif matches_in_round == 4:
+            r_name = "Tứ kết"
+        else:
+            r_name = f"Vòng {r_num}"
+
+        round_obj = TournamentRound(
+            tournament_id=t.id,
+            round_number=r_num,
+            round_name=r_name,
+            status="IN_PROGRESS" if r_num == 1 else "PENDING"
+        )
+        db.add(round_obj)
         db.flush()
+        created_rounds.append(round_obj)
 
-        # 6. Gán tuyển thủ và kích hoạt Vòng 1
-        round_1_matches = all_rounds_matches[1]
-        now = datetime.utcnow()
-        current_match_order = 0
+    # 5. Tạo các ô Trận đấu trống cho tất cả các vòng
+    all_rounds_matches = {}
+    for r_num in range(1, total_rounds + 1):
+        cur_round = created_rounds[r_num - 1]
+        matches_count = 2 ** (total_rounds - r_num)
+        cur_matches = []
+        for m_ord in range(matches_count):
+            m = TournamentMatch(
+                tournament_id=t.id,
+                round_id=cur_round.id,
+                match_order=m_ord,
+                player1_id=None,
+                player2_id=None,
+                winner_id=None,
+                is_bye=False,
+                status="WAITING"
+            )
+            db.add(m)
+            db.flush()
+            cur_matches.append(m)
+        all_rounds_matches[r_num] = cur_matches
 
-        # Cặp BYE ở vòng 1:
-        for bp in bye_participants:
-            m = round_1_matches[current_match_order]
-            m.player1_id = bp.user_id
-            m.player1_bot_id = bp.bot_id
-            m.winner_id = bp.user_id
+    t.status = "IN_PROGRESS"
+    db.flush()
+
+    # 6. Thuật toán Xếp cặp Chuẩn (Standard Bracket Allocation):
+    # Xây dựng danh sách slots cho Round 1 (đủ bracket_size slots)
+    # Hạt giống Top (num_byes người) nhận suất BYE ghép với None
+    slots = [None] * bracket_size
+    
+    # Phân bổ tuyển thủ vào sơ đồ hạt giống chuẩn (1 vs Bracket_size, 2 vs Bracket_size-1...)
+    # Cặp đấu m sẽ gồm slots[2*m] vs slots[2*m + 1]
+    # Đặt num_byes tuyển thủ đầu tiên vào vị trí đơn (đối thủ là None)
+    
+    player_idx = 0
+    # Xếp các suất BYE rải đều vào các cặp trận đấu khác nhau
+    # Quy tắc: Cặp m nhận 1 người chơi + 1 None nếu m < num_byes
+    round_1_matches = all_rounds_matches[1]
+    now = datetime.utcnow()
+
+    for m_ord in range(bracket_size // 2):
+        m = round_1_matches[m_ord]
+        
+        if m_ord < num_byes:
+            # Trận đấu có suất đặc cách BYE
+            p1 = accepted_participants[player_idx]
+            player_idx += 1
+            
+            m.player1_id = p1.user_id
+            m.player1_bot_id = p1.bot_id
+            m.winner_id = p1.user_id
             m.is_bye = True
             m.status = "COMPLETED"
             m.result_reason = "BYE"
             db.flush()
-            current_match_order += 1
+        else:
+            # Trận đấu thi đấu thực tế giữa 2 tuyển thủ
+            p1 = accepted_participants[player_idx]
+            p2 = accepted_participants[player_idx + 1]
+            player_idx += 2
+            
+            m.player1_id = p1.user_id
+            m.player1_bot_id = p1.bot_id
+            m.player2_id = p2.user_id
+            m.player2_bot_id = p2.bot_id
+            m.player1_joined_at = now
+            m.player2_joined_at = now
+            m.status = "PLAYING"
+            db.flush()
+            
+            # Kích hoạt thi đấu
+            TournamentService._execute_tournament_match(db, m)
 
-        # Cặp thi đấu thật ở vòng 1:
-        for i in range(0, len(non_bye_participants), 2):
-            p1 = non_bye_participants[i]
-            p2 = non_bye_participants[i+1] if (i+1) < len(non_bye_participants) else None
-            m = round_1_matches[current_match_order]
+    # Đẩy người thắng từ các trận BYE Vòng 1 lên Vòng 2
+    for m in round_1_matches:
+        if m.is_bye and m.winner_id:
+            TournamentService._on_match_concluded(db, m)
 
-            if p2 is None:
-                m.player1_id = p1.user_id
-                m.player1_bot_id = p1.bot_id
-                m.winner_id = p1.user_id
-                m.is_bye = True
-                m.status = "COMPLETED"
-                m.result_reason = "BYE"
-                db.flush()
-            else:
-                m.player1_id = p1.user_id
-                m.player1_bot_id = p1.bot_id
-                m.player2_id = p2.user_id
-                m.player2_bot_id = p2.bot_id
-                m.player1_joined_at = now
-                m.player2_joined_at = now
-                m.status = "PLAYING"
-                db.flush()
-                # Kích hoạt thực thi trận đấu ngay lập tức
-                TournamentService._execute_tournament_match(db, m)
+    if t.status != "COMPLETED":
+        t.status = "IN_PROGRESS"
 
-            current_match_order += 1
-
-        # Đẩy người thắng từ các trận BYE vòng 1 lên Vòng 2
-        for m in round_1_matches:
-            if m.is_bye and m.winner_id:
-                TournamentService._on_match_concluded(db, m)
-
-        # Chỉ giữ IN_PROGRESS nếu giải đấu chưa hoàn thành
-        if t.status != "COMPLETED":
-            t.status = "IN_PROGRESS"
-
-        db.commit()
-        return TournamentService.get_tournament_detail(db, t.id)
+    db.commit()
+    return TournamentService.get_tournament_detail(db, t.id)
 
     @staticmethod
     def _propagate_winner_to_next_round(
@@ -868,87 +861,64 @@ class TournamentService:
         db.commit()
         return TournamentService.get_tournament_detail(db, t.id)
 
-    @staticmethod
-    def _on_match_concluded(db: Session, m: TournamentMatch):
-        """Xử lý sau khi một trận đấu hoàn tất (thắng bình thường hoặc xử thua vắng mặt)"""
-        t = db.query(Tournament).filter(Tournament.id == m.tournament_id).first()
-        cur_round = db.query(TournamentRound).filter(TournamentRound.id == m.round_id).first()
-        all_rounds = (
-            db.query(TournamentRound)
-            .filter(TournamentRound.tournament_id == t.id)
-            .order_by(TournamentRound.round_number.asc())
-            .all()
+    # Tệp: backend/services/tournament_service.py
+
+@staticmethod
+def _on_match_concluded(db: Session, m: TournamentMatch):
+    """Xử lý sau khi một trận đấu hoàn tất"""
+    t = db.query(Tournament).filter(Tournament.id == m.tournament_id).first()
+    cur_round = db.query(TournamentRound).filter(TournamentRound.id == m.round_id).first()
+    all_rounds = (
+        db.query(TournamentRound)
+        .filter(TournamentRound.tournament_id == t.id)
+        .order_by(TournamentRound.round_number.asc())
+        .all()
+    )
+    total_rounds = len(all_rounds)
+
+    if cur_round.round_number < total_rounds:
+        next_round = all_rounds[cur_round.round_number] # Vòng kế tiếp (index = round_number)
+        next_match_order = m.match_order // 2
+        next_match = (
+            db.query(TournamentMatch)
+            .filter(TournamentMatch.round_id == next_round.id, TournamentMatch.match_order == next_match_order)
+            .first()
         )
-        total_rounds = len(all_rounds)
+        if next_match:
+            winner_bot_id = m.player1_bot_id if m.winner_id == m.player1_id else m.player2_bot_id
+            # Xác định slot player1 hay player2 ở trận tiếp theo
+            if m.match_order % 2 == 0:
+                next_match.player1_id = m.winner_id
+                next_match.player1_bot_id = winner_bot_id
+            else:
+                next_match.player2_id = m.winner_id
+                next_match.player2_bot_id = winner_bot_id
+            db.flush()
 
-        if cur_round.round_number < total_rounds:
-            next_round = all_rounds[cur_round.round_number]
-            next_match_order = m.match_order // 2
-            next_match = (
-                db.query(TournamentMatch)
-                .filter(TournamentMatch.round_id == next_round.id, TournamentMatch.match_order == next_match_order)
-                .first()
-            )
-            if next_match:
-                winner_bot_id = m.player1_bot_id if m.winner_id == m.player1_id else m.player2_bot_id
-                if m.match_order % 2 == 0:
-                    next_match.player1_id = m.winner_id
-                    next_match.player1_bot_id = winner_bot_id
-                else:
-                    next_match.player2_id = m.winner_id
-                    next_match.player2_bot_id = winner_bot_id
-                db.flush()
-
-                # Khi cả 2 tuyển thủ thắng từ vòng trước đã hội tụ -> Tự động đấu tiếp trận vòng sau lập tức!
-                if next_match.player1_id and next_match.player2_id and next_match.status != "COMPLETED":
-                    now = datetime.utcnow()
-                    next_match.player1_joined_at = now
-                    next_match.player2_joined_at = now
-                    next_match.status = "PLAYING"
-                    db.flush()
-                    TournamentService._execute_tournament_match(db, next_match)
-
-            # Kiểm tra xem vòng hiện tại đã xong hết các trận chưa
-            remaining_matches = (
-                db.query(TournamentMatch)
-                .filter(TournamentMatch.round_id == cur_round.id, TournamentMatch.status.in_(["READY", "WAITING", "PLAYING"]))
-                .count()
-            )
-            if remaining_matches == 0:
-                cur_round.status = "COMPLETED"
-                if next_round.status == "PENDING":
-                    next_round.status = "IN_PROGRESS"
-
-                next_matches = db.query(TournamentMatch).filter(TournamentMatch.round_id == next_round.id).all()
+            # Nếu cả 2 vị trí ở trận sau đã có tuyển thủ -> Kích hoạt thi đấu ngay
+            if next_match.player1_id and next_match.player2_id and next_match.status not in ["PLAYING", "COMPLETED"]:
                 now = datetime.utcnow()
-                for nm in next_matches:
-                    if nm.player1_id and nm.player2_id and nm.status not in ["PLAYING", "COMPLETED"]:
-                        nm.status = "PLAYING"
-                        nm.player1_joined_at = now
-                        nm.player2_joined_at = now
-                        db.flush()
-                        TournamentService._execute_tournament_match(db, nm)
-                    elif nm.player1_id and not nm.player2_id and nm.status == "WAITING":
-                        nm.is_bye = True
-                        nm.winner_id = nm.player1_id
-                        nm.status = "COMPLETED"
-                        nm.result_reason = "BYE"
-                        TournamentService._on_match_concluded(db, nm)
-                    elif nm.player2_id and not nm.player1_id and nm.status == "WAITING":
-                        nm.is_bye = True
-                        nm.winner_id = nm.player2_id
-                        nm.status = "COMPLETED"
-                        nm.result_reason = "BYE"
-                        TournamentService._on_match_concluded(db, nm)
-                    elif not nm.player1_id and not nm.player2_id and nm.status == "WAITING":
-                        nm.status = "FORFEIT"
-                        nm.result_reason = "DOUBLE_NO_SHOW"
-                        TournamentService._on_match_concluded(db, nm)
-        else:
-            # ĐÂY LÀ TRẬN CHUNG KẾT!
+                next_match.player1_joined_at = now
+                next_match.player2_joined_at = now
+                next_match.status = "PLAYING"
+                db.flush()
+                TournamentService._execute_tournament_match(db, next_match)
+
+        # Kiểm tra hoàn thành vòng hiện tại
+        remaining_matches = (
+            db.query(TournamentMatch)
+            .filter(TournamentMatch.round_id == cur_round.id, TournamentMatch.status.in_(["READY", "WAITING", "PLAYING"]))
+            .count()
+        )
+        if remaining_matches == 0:
             cur_round.status = "COMPLETED"
-            t.status = "COMPLETED"
-            t.champion_id = m.winner_id
+            if next_round.status == "PENDING":
+                next_round.status = "IN_PROGRESS"
+    else:
+        # TRẬN CHUNG KẾT HOÀN TẤT
+        cur_round.status = "COMPLETED"
+        t.status = "COMPLETED"
+        t.champion_id = m.winner_id
 
     @staticmethod
     def get_match_detail(db: Session, tournament_id: int, match_id: int) -> TournamentMatchResponse:
