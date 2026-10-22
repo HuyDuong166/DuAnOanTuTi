@@ -8,9 +8,13 @@ from backend.database.base import Base
 logger = logging.getLogger("uvicorn.error")
 
 def fix_db_url(url: str) -> str:
-    """Tự động chuyển đổi postgres:// thành postgresql:// để chuẩn hóa cho SQLAlchemy"""
-    if url and url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql://", 1)
+    """Tự động ép kiểu sang driver postgresql+psycopg2 để dùng psycopg2-binary"""
+    if not url:
+        return url
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg2://", 1)
+    if url.startswith("postgresql://") and not url.startswith("postgresql+"):
+        return url.replace("postgresql://", "postgresql+psycopg2://", 1)
     return url
 
 def init_engine():
