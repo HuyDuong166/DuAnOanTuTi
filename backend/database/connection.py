@@ -7,9 +7,18 @@ from backend.database.base import Base
 
 logger = logging.getLogger("uvicorn.error")
 
+def fix_db_url(url: str) -> str:
+    """Tự động chuyển đổi postgres:// thành postgresql:// để chuẩn hóa cho SQLAlchemy"""
+    if url and url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql://", 1)
+    return url
+
 def init_engine():
+    # Lấy DATABASE_URL và tự động chuẩn hóa định dạng
+    primary_url = fix_db_url(settings.DATABASE_URL)
+
     candidate_urls = [
-        settings.DATABASE_URL,
+        primary_url,
         "mysql+mysqlconnector://root:password@localhost:3307/uet_algorithm_battle",
         "mysql+mysqlconnector://root:password@localhost:3306/uet_algorithm_battle",
     ]
@@ -17,15 +26,19 @@ def init_engine():
         if not url:
             continue
         try:
-            mysql_engine = create_engine(url, pool_pre_ping=True)
-            with mysql_engine.connect() as conn:
+            db_engine = create_engine(url, pool_pre_ping=True)
+            with db_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            print(f"[DATABASE] Ket noi MySQL thanh cong tai: {url.split('@')[-1]}!")
-            return mysql_engine
-        except Exception:
-            pass
+            
+            host_info = url.split('@')[-1] if '@' in url else url
+            print(f"[DATABASE SUCCESS] Ket noi Database thanh cong tai: {host_info}!")
+            return db_engine
+        except Exception as e:
+            # In trực tiếp lỗi kết nối Neon/Database chính ra Render Log
+            if url == primary_url:
+                print(f"[DATABASE CONNECTION ERROR ON PRIMARY DB]: {e}")
 
-    print("[DATABASE INFO] Chua bat MySQL. Tu dong chuyen sang SQLite (uet_algorithm_battle.db) de dam bao he thong hoat dong ngay lap tuc!")
+    print("[DATABASE INFO] Chua bat MySQL/Postgres Cloud. Tu dong chuyen sang SQLite (uet_algorithm_battle.db) de dam bao he thong hoat dong ngay lap tuc!")
     sqlite_engine = create_engine(
         settings.SQLITE_FALLBACK_URL,
         connect_args={"check_same_thread": False}
