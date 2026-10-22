@@ -666,8 +666,28 @@ class TournamentService:
             blue_file = "bots/examples/random_bot.py" if os.path.exists("bots/examples/random_bot.py") else None
 
         # Nạp luật thi đấu Knockout có Chướng ngại vật từ configs/final.json
+        # 1. Truy vấn Vòng đấu hiện tại và Tổng số vòng của Giải đấu
+        cur_round = db.query(TournamentRound).filter(TournamentRound.id == m.round_id).first()
+        total_rounds = db.query(TournamentRound).filter(TournamentRound.tournament_id == m.tournament_id).count()
+
+        # 2. Xử lý nhận diện Stage dựa vào số vòng còn cách trận Chung kết
+        stage_key = "qualification"
+        if cur_round and total_rounds > 0:
+            rounds_from_final = total_rounds - cur_round.round_number
+            if rounds_from_final == 0:
+                stage_key = "final"          # Nạp configs/final.json
+            elif rounds_from_final == 1:
+                stage_key = "semifinal"      # Nạp configs/semifinal.json
+            elif rounds_from_final == 2:
+                stage_key = "quarterfinal"  # Nạp configs/quarterfinal.json
+            elif rounds_from_final == 3:
+                stage_key = "top16"          # Nạp configs/top16.json
+            else:
+                stage_key = "qualification"  # Nạp configs/qualification.json
+
+        # 3. Nạp cấu hình theo stage_key tương ứng
         rule_mgr = TournamentRuleManager()
-        rule_set = rule_mgr.get_rule_set_for_stage("final")
+        rule_set = rule_mgr.get_rule_set_for_stage(stage_key)
         engine = GameEngine(rule_set)
 
         initial_board = engine.state.to_dict()["board"]
@@ -682,8 +702,8 @@ class TournamentService:
         try:
             if red_file and blue_file:
                 try:
-                    wrapper_red = DockerBotWrapper(bot_dir=red_file, team_name="RED", time_limit=2.0)
-                    wrapper_blue = DockerBotWrapper(bot_dir=blue_file, team_name="BLUE", time_limit=2.0)
+                    wrapper_red = DockerBotWrapper(bot_dir=red_file, team_name="RED", time_limit=rule_set.move_time_limit)
+                    wrapper_blue = DockerBotWrapper(bot_dir=blue_file, team_name="BLUE", time_limit=rule_set.move_time_limit)
                 except Exception:
                     wrapper_red = None
                     wrapper_blue = None

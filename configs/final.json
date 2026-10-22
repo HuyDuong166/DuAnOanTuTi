@@ -6,8 +6,9 @@
     "total_advancing": 1,
     "next_phase": null,
     "board_size": 9,
-    "max_turns": 50,
+    "max_turns": 80,
     "obstacles": [
+        [2, 2], [2, 6],
         [3, 3], [3, 4], [3, 5],
         [5, 3], [5, 4], [5, 5]
     ]

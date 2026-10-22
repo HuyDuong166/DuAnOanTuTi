@@ -7,7 +7,7 @@
   "points_draw": 1,
   "points_loss": 0,
   "advancing_per_group": 1,
-  "board_size": 4,
+  "board_size": 9,
   "max_turns": 50,
   "obstacles": []
 }
