@@ -1,23 +1,25 @@
-# Môi trường ảo Python & Cache
+# Python cache & virtual environment
+__pycache__/
+*.py[cod]
 .venv/
 venv/
-ENV/
 env/
-__pycache__/
-*.pyc
-*.pyo
 
-# CSDL local & File rác
-*.db
-*.sqlite3
-.DS_Store
-
-# Log trận đấu tạm thời
-match_logs/
-.pytest_cache/
-.coverage
-
-# File cấu hình chứa mật khẩu bí mật
+# Dữ liệu nhạy cảm / Môi trường
 .env
 
+# Database cục bộ
+*.db
+*.sqlite3
+uet_algorithm_battle.db
+
+# Dữ liệu kết quả chạy giải đấu tạm thời
 qualification_result_laptop_*.json
+bots/all_submitted_bots.json
+bots/submissions_group_*/
+configs/swiss_qualified_bots.json
+configs/swiss_final_standings.json
+
+# VS Code / IDE configs
+.vscode/
+.idea/

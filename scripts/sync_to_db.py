@@ -1,5 +1,10 @@
-import json
+import sys
 import os
+
+# Thêm thư mục gốc vào sys.path để Python nhận diện module 'backend'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import json
 from backend.database.connection import SessionLocal
 from backend.models.bot import Bot, BotVersion
 from backend.models.user import User
@@ -20,7 +25,7 @@ def sync_results():
         with open(results_file, "r", encoding="utf-8") as f:
             bots_data = json.load(f)
 
-        print(f"Đang đồng bộ {len(bots_data)} Bot & Sinh viên vào Cơ sở dữ liệu...")
+        print(f"Đang đồng bộ {len(bots_data)} Bot & Sinh viên vào Cơ sở dữ liệu Neon...")
 
         for idx, item in enumerate(bots_data, start=1):
             bot_name = item.get("name", f"Bot_SinhVien_{idx}")
@@ -37,8 +42,7 @@ def sync_results():
                     hashed_password="hashed_password_sample"
                 )
                 db.add(user)
-                db.commit()
-                db.refresh(user)
+                db.flush()  # Dùng flush thay vì commit để không tốn network round-trip
 
             # 2. Tạo hoặc lấy Bot & Phiên bản Bot (BotVersion)
             bot = db.query(Bot).filter(Bot.name == bot_name, Bot.user_id == user.id).first()
@@ -50,8 +54,7 @@ def sync_results():
                     status="READY"
                 )
                 db.add(bot)
-                db.commit()
-                db.refresh(bot)
+                db.flush()
 
                 # Lưu đường dẫn file vào BotVersion
                 bot_version = BotVersion(
@@ -61,13 +64,11 @@ def sync_results():
                     status="READY"
                 )
                 db.add(bot_version)
-                db.commit()
-                db.refresh(bot_version)
+                db.flush()
 
                 bot.current_version_id = bot_version.id
-                db.commit()
 
-            # 3. Cập nhật Thống kê & Điểm số (PlayerStat) hiển thị trên Web Leaderboard
+            # 3. Cập nhật Thống kê & Điểm số (PlayerStat)
             stat = db.query(PlayerStat).filter(PlayerStat.user_id == user.id).first()
             wins = max(0, len(bots_data) - idx)
             draws = 1
@@ -91,9 +92,12 @@ def sync_results():
                 stat.total_matches = wins + draws + losses
                 stat.total_points = points
 
-            db.commit()
+            if idx % 20 == 0 or idx == len(bots_data):
+                print(f"  -> Đã xử lý {idx}/{len(bots_data)} bot...")
 
-        print("=== ĐỒNG BỘ THÀNH CÔNG! Bảng xếp hạng đã cập nhật vào Database ===")
+        # Gửi duy nhất 1 giao dịch commit cuối cùng cho toàn bộ 128 bot
+        db.commit()
+        print("=== ĐỒNG BỘ THÀNH CÔNG! Bảng xếp hạng đã cập nhật vào Database Neon ===")
 
     except Exception as e:
         db.rollback()

@@ -1,6 +1,10 @@
-import json
 import sys
 import os
+
+# Thêm thư mục gốc của dự án vào sys.path để Python nhận diện thư mục 'tournament'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import json
 from tournament.qualification import QualificationStage
 
 def run_worker(laptop_id, total_laptops=4):

@@ -1,5 +1,10 @@
-import json
+import sys
 import os
+
+# Thêm thư mục gốc vào sys.path để Python nhận diện module 'backend' và 'game'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import json
 import random
 from backend.database.connection import SessionLocal
 from backend.models.tournament import Tournament, TournamentParticipant, TournamentRound, TournamentMatch
